@@ -808,7 +808,7 @@ button{font-family:inherit;cursor:pointer}
         <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input id="cust-q" placeholder="Search name, phone, agency…" oninput="renderCustomers()"></div></div>
         <div id="cust-table"><div class="loading">Loading customers…</div></div>
       </div>
-    </div><div class="view" id="v-tools"></div><div class="view" id="v-compliance"></div></div>
+    </div><div class="view" id="v-tools"></div><div class="view" id="v-compliance"></div><div class="view" id="v-settings"></div></div>
 </div>
 
 <!-- CUSTOMER DETAIL -->
@@ -952,6 +952,7 @@ const MODULES = [
   {key:'customers', label:'Customers',  ic:'\u260e'},
   {key:'tools',     label:'Tools',      ic:'\u2692'},
   {key:'compliance',label:'Compliance', ic:'\u26a0'},
+  {key:'settings',  label:'Settings',   ic:'\u2699'},
 ];
 
 function buildTabs(){
@@ -979,6 +980,7 @@ function go(key){
     permits:    () => renderPermits(),
     '1099':     () => render1099(),
     bidding:    () => renderDashboard(),
+    settings:   () => renderSettings(),
   }[key];
   if (r) {
     try { r(); }
@@ -1039,6 +1041,7 @@ async function boot(){
     ['payees',      () => loadPayees()],
     ['tools',       () => loadTools()],
     ['compliance',  () => loadCompliance()],
+    ['settings',    () => loadSettingsData()],
   ];
   for (const [name, fn] of steps) {
     try { await fn(); } catch(e){ pamShowError('DATA LOAD FAILED [' + name + ']: ' + e.message); }
@@ -1049,6 +1052,8 @@ async function boot(){
   try { renderComplianceAlert(); } catch(e){}
   try { renderPermitAlert(); } catch(e){}
   try { renderJobAlert(); } catch(e){}
+  try { applyLogo(); } catch(e){}
+  try { await cacheLogoUrl(); } catch(e){}
 }
 
 // Wait for every module script to finish loading before booting.
@@ -3163,162 +3168,19 @@ function resolveRate(crewId,workTypeId,customerId){
   return {cost,bill};
 }
 
-function renderTime(){
-  const el=document.getElementById('v-time'); if(!el)return;
-  const me=localStorage.getItem('pam_crew')||'';
-  const crewOpts=Crew.map(c=>`<option value="${c.id}" ${c.id===me?'selected':''}>${esc(c.name)}</option>`).join('');
-  const custOpts=`<option value="">— none / internal —</option>`+Custs.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  const jobOpts=`<option value="">— no job —</option>`+Jobs.map(j=>`<option value="${j.id}">${esc(j.title||j.job_number||'Job')}</option>`).join('');
-  const wtOpts=WorkTypes.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('');
 
-  let clockCard;
-  if(activeEntry){
-    clockCard=`<div class="panel" style="border-color:var(--green)">
-      <div class="panel-b" style="text-align:center;padding:22px">
-        <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">On the clock</div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:2px">${esc(activeEntry.crew_name||'')}</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${esc(activeEntry.work_type_name||'')} ${activeEntry.customer_name?'· '+esc(activeEntry.customer_name):''}</div>
-        <div id="tick" class="disp" style="font-size:40px;color:var(--green);margin-bottom:16px">0:00:00</div>
-        <button class="btn btn-danger" style="font-size:15px;padding:11px 26px" onclick="clockOut()">Clock out</button>
-      </div></div>`;
-  } else {
-    clockCard=`<div class="panel">
-      <div class="panel-h"><h3>Clock in</h3></div>
-      <div class="panel-b">
-        <div class="fg"><label class="lbl">Who</label><select id="tk-crew">${crewOpts}</select></div>
-        <div class="fg"><label class="lbl">What kind of work</label><select id="tk-wt">${wtOpts}</select></div>
-        <div class="fg"><label class="lbl">Customer</label><select id="tk-cust" onchange="previewRate()">${custOpts}</select></div>
-        <div class="fg"><label class="lbl">Job (optional)</label><select id="tk-job">${jobOpts}</select></div>
-        <div class="fg"><label class="lbl">Notes</label><input type="text" id="tk-notes" placeholder="What are you working on?"></div>
-        <div id="tk-rate" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;font-size:15px;padding:11px" onclick="clockIn()">Clock in</button>
-      </div></div>`;
-  }
 
-  const wkStart=new Date(); wkStart.setDate(wkStart.getDate()-wkStart.getDay());
-  const wk=TimeEntries.filter(t=>t.clock_out&&new Date(t.work_date+'T00:00:00')>=new Date(wkStart.toDateString()));
-  const wkHours=wk.reduce((a,t)=>a+(+t.hours||0),0);
-  const wkBill=wk.reduce((a,t)=>a+(+t.bill_total||0),0);
-  const wkCost=wk.reduce((a,t)=>a+(+t.cost_total||0),0);
 
-  const rows=TimeEntries.filter(t=>t.clock_out).slice(0,60).map(t=>`<tr>
-    <td>${t.work_date||''}</td>
-    <td>${esc(t.crew_name||'')}</td>
-    <td>${esc(t.customer_name||'—')}</td>
-    <td>${esc(t.work_type_name||'')}</td>
-    <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
-    <td style="text-align:right">$${(+t.bill_total||0).toFixed(2)}</td>
-    <td style="text-align:center">${t.billed?'<span class="badge b-green">Invoiced</span>':'<span class="badge b-gray">Open</span>'}</td>
-    <td style="text-align:right"><button class="btn btn-xs" onclick="deleteTimeEntry('${t.id}')">✕</button></td>
-  </tr>`).join('');
 
-  el.innerHTML=`<div class="wrap">
-    <div class="page-head"><div><h1>Time clock</h1><div class="sub">Hours flow straight into invoicing</div></div></div>
-    <div class="kgrid">
-      <div class="kpi"><div class="k-label">Hours this week</div><div class="k-val">${wkHours.toFixed(1)}</div></div>
-      <div class="kpi"><div class="k-label">Billable this week</div><div class="k-val">$${wkBill.toFixed(0)}</div></div>
-      <div class="kpi"><div class="k-label">Labor cost</div><div class="k-val">$${wkCost.toFixed(0)}</div></div>
-      <div class="kpi"><div class="k-label">Gross margin</div><div class="k-val">${wkBill>0?Math.round((wkBill-wkCost)/wkBill*100):0}%</div></div>
-    </div>
-    <div class="cols">
-      <div>${clockCard}</div>
-      <div><div class="panel"><div class="panel-h"><h3>Add hours manually</h3></div><div class="panel-b">
-        <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="mn-crew">${crewOpts}</select></div>
-        <div class="fg" style="flex:1"><label class="lbl">Date</label><input type="date" id="mn-date" value="${new Date().toISOString().slice(0,10)}"></div></div>
-        <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Work type</label><select id="mn-wt">${wtOpts}</select></div>
-        <div class="fg" style="flex:1"><label class="lbl">Hours</label><input type="number" id="mn-hours" step="0.25" min="0" value="8"></div></div>
-        <div class="fg"><label class="lbl">Customer</label><select id="mn-cust">${custOpts}</select></div>
-        <div class="fg"><label class="lbl">Notes</label><input type="text" id="mn-notes"></div>
-        <button class="btn" style="width:100%;justify-content:center" onclick="addManualTime()">Add entry</button>
-      </div></div></div>
-    </div>
-    <div class="panel"><div class="panel-h"><h3>Recent entries</h3></div><div class="panel-b" style="padding:0">
-      <table class="tbl"><thead><tr><th>Date</th><th>Who</th><th>Customer</th><th>Work</th>
-      <th style="text-align:right">Hrs</th><th style="text-align:right">Billable</th><th style="text-align:center">Status</th><th></th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">No entries yet</td></tr>'}</tbody></table>
-    </div></div>
-  </div>`;
-  if(activeEntry)startTick(); else previewRate();
-}
 
-function previewRate(){
-  const box=document.getElementById('tk-rate'); if(!box)return;
-  const cid=document.getElementById('tk-crew')?.value;
-  const wt=document.getElementById('tk-wt')?.value;
-  const cu=document.getElementById('tk-cust')?.value||null;
-  const r=resolveRate(cid,wt,cu);
-  box.innerHTML=`Rate for this combination: cost $${r.cost.toFixed(2)}/hr · bill $${r.bill.toFixed(2)}/hr`;
-}
 
-function startTick(){
-  clearInterval(tickTimer);
-  tickTimer=setInterval(()=>{
-    const el=document.getElementById('tick'); if(!el||!activeEntry)return;
-    const s=Math.floor((Date.now()-new Date(activeEntry.clock_in).getTime())/1000);
-    el.textContent=`${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-  },1000);
-}
 
-async function clockIn(){
-  const cid=document.getElementById('tk-crew').value;
-  const wt=document.getElementById('tk-wt').value;
-  const cu=document.getElementById('tk-cust').value||null;
-  const jb=document.getElementById('tk-job').value||null;
-  if(!cid){alert('Pick who is clocking in.');return;}
-  localStorage.setItem('pam_crew',cid);
-  const r=resolveRate(cid,wt,cu);
-  const {data,error}=await sb.from('time_entries').insert({
-    crew_id:cid, crew_name:(Crew.find(c=>c.id===cid)||{}).name,
-    work_type_id:wt, work_type_name:(WorkTypes.find(w=>w.id===wt)||{}).name,
-    customer_id:cu, customer_name:cu?(Custs.find(c=>c.id===cu)||{}).name:null,
-    job_id:jb, clock_in:new Date().toISOString(),
-    cost_rate:r.cost, bill_rate:r.bill,
-    notes:document.getElementById('tk-notes').value||null
-  }).select();
-  if(error){alert('Could not clock in: '+error.message+'\n\nDid you run time_invoice_setup.sql?');return;}
-  await loadTimeData(); renderTime();
-}
 
-async function clockOut(){
-  if(!activeEntry)return;
-  const out=new Date();
-  const hours=Math.round((out-new Date(activeEntry.clock_in))/36e5*100)/100;
-  const {error}=await sb.from('time_entries').update({
-    clock_out:out.toISOString(), hours,
-    cost_total:Math.round(hours*(+activeEntry.cost_rate||0)*100)/100,
-    bill_total:Math.round(hours*(+activeEntry.bill_rate||0)*100)/100
-  }).eq('id',activeEntry.id);
-  if(error){alert('Could not clock out: '+error.message);return;}
-  clearInterval(tickTimer); await loadTimeData(); renderTime();
-}
 
-async function addManualTime(){
-  const cid=document.getElementById('mn-crew').value;
-  const wt=document.getElementById('mn-wt').value;
-  const cu=document.getElementById('mn-cust').value||null;
-  const hours=+document.getElementById('mn-hours').value||0;
-  if(!cid||hours<=0){alert('Pick a person and enter hours.');return;}
-  const r=resolveRate(cid,wt,cu);
-  const {error}=await sb.from('time_entries').insert({
-    crew_id:cid, crew_name:(Crew.find(c=>c.id===cid)||{}).name,
-    work_type_id:wt, work_type_name:(WorkTypes.find(w=>w.id===wt)||{}).name,
-    customer_id:cu, customer_name:cu?(Custs.find(c=>c.id===cu)||{}).name:null,
-    work_date:document.getElementById('mn-date').value,
-    clock_in:new Date().toISOString(), clock_out:new Date().toISOString(),
-    hours, cost_rate:r.cost, bill_rate:r.bill,
-    cost_total:Math.round(hours*r.cost*100)/100,
-    bill_total:Math.round(hours*r.bill*100)/100,
-    notes:document.getElementById('mn-notes').value||null
-  });
-  if(error){alert('Could not add: '+error.message);return;}
-  await loadTimeData(); renderTime();
-}
 
-async function deleteTimeEntry(id){
-  if(!confirm('Delete this time entry?'))return;
-  await sb.from('time_entries').delete().eq('id',id);
-  await loadTimeData(); renderTime();
-}
+
+
+
 
 
 /* ===== invoices.js ===== */
@@ -3381,7 +3243,7 @@ function renderInvoices(){
 
   el.innerHTML=`<div class="wrap">
     <div class="page-head"><div><h1>Invoices</h1><div class="sub">Built from clocked hours</div></div>
-      <button class="btn" onclick="buildInvoice('')">Blank invoice</button></div>
+      <button class="btn btn-primary" onclick="newCustomInvoice()">+ Custom invoice</button></div>
     <div class="kgrid">
       <div class="kpi"><div class="k-label">Outstanding</div><div class="k-val">$${outstanding.toFixed(0)}</div></div>
       <div class="kpi"><div class="k-label">Unbilled hours</div><div class="k-val">${unbilled.reduce((a,t)=>a+(+t.hours||0),0).toFixed(1)}</div></div>
@@ -3396,84 +3258,11 @@ function renderInvoices(){
     </div></div></div>`;
 }
 
-async function buildInvoice(customerId){
-  const list=customerId?TimeEntries.filter(t=>t.clock_out&&!t.billed&&t.customer_id===customerId):[];
-  const cust=Custs.find(c=>c.id===customerId);
-  const no='INV-'+new Date().getFullYear()+'-'+String(Invoices.length+1).padStart(4,'0');
-  const subtotal=list.reduce((a,t)=>a+(+t.bill_total||0),0);
-  const due=new Date(); due.setDate(due.getDate()+30);
-  const {data,error}=await sb.from('invoices').insert({
-    invoice_no:no, customer_id:customerId||null, customer_name:cust?cust.name:'',
-    status:'draft', issue_date:new Date().toISOString().slice(0,10),
-    due_date:due.toISOString().slice(0,10),
-    subtotal, total:subtotal, terms:'Net 30'
-  }).select();
-  if(error){alert('Could not create invoice: '+error.message);return;}
-  const inv=data[0];
-  // group hours by work type into readable lines
-  const groups={};
-  list.forEach(t=>{const k=t.work_type_name||'Labor';
-    groups[k]=groups[k]||{hours:0,amount:0,rate:+t.bill_rate||0};
-    groups[k].hours+=+t.hours||0; groups[k].amount+=+t.bill_total||0;});
-  let n=0;
-  for(const [name,g] of Object.entries(groups)){
-    await sb.from('invoice_lines').insert({invoice_id:inv.id,description:name+' labor',
-      qty:Math.round(g.hours*100)/100,unit:'hour',rate:g.rate,
-      amount:Math.round(g.amount*100)/100,source_type:'time',sort_order:n++});
-  }
-  if(list.length) await sb.from('time_entries').update({billed:true,invoice_id:inv.id}).in('id',list.map(t=>t.id));
-  await loadTimeData(); await loadInvoiceData(); renderInvoices(); openInvoice(inv.id);
-}
 
-function invoiceHTML(id,asReceipt){
-  const inv=Invoices.find(i=>i.id===id); if(!inv)return '';
-  const lines=InvLines.filter(l=>l.invoice_id===id).sort((a,b)=>a.sort_order-b.sort_order);
-  const pays=Payments.filter(p=>p.invoice_id===id);
-  const paid=pays.reduce((a,p)=>a+(+p.amount||0),0);
-  const cust=Custs.find(c=>c.id===inv.customer_id)||{};
-  const co=(typeof Settings!=='undefined'&&Settings)?Settings:{};
-  return `<div style="font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:36px;color:#1b1813">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #b9531d;padding-bottom:16px;margin-bottom:22px">
-      <div><div style="font-size:26px;font-weight:700;color:#b9531d;letter-spacing:-.5px">Penn Access &amp; Mobility</div>
-        <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">P.A. Losch and Sons LLC<br>3366 Evendale Hill Road, Richfield, PA 17086<br>717-320-2829 · PA License #054398</div></div>
-      <div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:2px;color:#333">${asReceipt?'RECEIPT':'INVOICE'}</div>
-        <div style="font-size:13px;margin-top:6px">${esc(inv.invoice_no||'')}</div>
-        <div style="font-size:12px;color:#666">Date: ${inv.issue_date||''}</div>
-        ${!asReceipt?`<div style="font-size:12px;color:#666">Due: ${inv.due_date||''}</div>`:''}</div>
-    </div>
-    <div style="margin-bottom:20px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Bill to</div>
-      <div style="font-size:14px;font-weight:600">${esc(inv.customer_name||'')}</div>
-      <div style="font-size:12px;color:#555;line-height:1.5">${esc(cust.address||'')}${cust.phone?'<br>'+esc(cust.phone):''}${cust.email?'<br>'+esc(cust.email):''}</div></div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
-      <thead><tr style="background:#f4f0e7"><th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Description</th>
-      <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Qty</th>
-      <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Rate</th>
-      <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Amount</th></tr></thead>
-      <tbody>${lines.map(l=>`<tr><td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(l.description||'')}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">${(+l.qty||0).toFixed(2)} ${esc(l.unit||'')}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.rate||0).toFixed(2)}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.amount||0).toFixed(2)}</td></tr>`).join('')||
-        '<tr><td colspan="4" style="padding:14px;color:#999">No line items</td></tr>'}</tbody></table>
-    <div style="margin-left:auto;width:280px;font-size:13px">
-      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Subtotal</span><span>$${(+inv.subtotal||0).toFixed(2)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #b9531d;font-weight:700;font-size:15px"><span>Total</span><span>$${(+inv.total||0).toFixed(2)}</span></div>
-      ${paid>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:#3c6b46"><span>Paid</span><span>-$${paid.toFixed(2)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #ddd;font-weight:700"><span>Balance</span><span>$${Math.max(0,(+inv.total||0)-paid).toFixed(2)}</span></div>`:''}
-    </div>
-    ${asReceipt?`<div style="margin-top:26px;padding:14px;background:#e4eee3;border-left:4px solid #3c6b46">
-      <div style="font-weight:700;color:#3c6b46;margin-bottom:6px">Payment received — thank you</div>
-      ${pays.map(p=>`<div style="font-size:12px;color:#444">${p.paid_date} · ${esc(p.method||'')} ${p.reference?'· ref '+esc(p.reference):''} · $${(+p.amount||0).toFixed(2)}</div>`).join('')}
-    </div>`:`<div style="margin-top:26px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px">
-      <b>Terms:</b> ${esc(inv.terms||'Net 30')}. Please make checks payable to P.A. Losch and Sons LLC.<br>
-      ${esc(inv.notes||'')}</div>`}
-  </div>`;
-}
 
-function openInvoice(id){
-  document.getElementById('inv-body').innerHTML=invoiceHTML(id,false);
-  document.getElementById('inv-view').dataset.id=id;
-  openOv('ov-invoice');
-}
+
+
+
 
 function printInvoice(id,asReceipt){
   const w=window.open('','_blank');
@@ -4472,7 +4261,932 @@ async function deletePayee(id){
   await loadPayees(); render1099();
 }
 
+
+
+// ============================================================================
+// SETTINGS
+// Company info, logo, invoice branding, crew, subcontractors, work types,
+// and rate cards (what each customer pays you, by tier).
+// ============================================================================
+let RateCards = [], RateLines = [], setPane = 'company';
+
+async function loadSettingsData(){
+  const [rc, rl, wt] = await Promise.all([
+    sb.from('rate_cards').select('*').order('tier_name'),
+    sb.from('rate_card_lines').select('*').order('sort_order'),
+    sb.from('work_types').select('*').eq('active', true).order('sort_order'),
+  ]);
+  RateCards = rc.data || [];
+  RateLines = rl.data || [];
+  if (wt.data) WorkTypes = wt.data;
+  const cs = await sb.from('company_settings').select('*');
+  Settings = {};
+  (cs.data || []).forEach(r => Settings[r.key] = r.value);
+}
+
+async function saveSetting(key, value){
+  await sb.from('company_settings').upsert({key, value: String(value == null ? '' : value), updated_at: new Date().toISOString()});
+  Settings[key] = value;
+}
+
+function setSetTab(t){ setPane = t; renderSettings(); }
+
+function renderSettings(){
+  const el = $('v-settings'); if (!el) return;
+  const tabs = [
+    ['company',  'Company'],
+    ['invoice',  'Invoice look'],
+    ['crew',     'Crew'],
+    ['subs',     'Subcontractors'],
+    ['rates',    'Rate cards'],
+    ['worktypes','Work types'],
+  ];
+  el.innerHTML = `<div class="wrap">
+    <div class="page-head"><div><h1>Settings</h1><div class="sub">Everything the rest of the app reads from</div></div></div>
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+      ${tabs.map(([k,l]) => `<button class="btn btn-sm ${setPane===k?'btn-primary':''}" onclick="setSetTab('${k}')">${l}</button>`).join('')}
+    </div>
+    <div id="set-body"></div></div>`;
+  ({company:setCompany, invoice:setInvoice, crew:setCrew, subs:setSubs, rates:setRates, worktypes:setWorkTypes}[setPane] || setCompany)();
+}
+
+// ---------- Company ----------
+function setCompany(){
+  const g = k => esc(Settings[k] || '');
+  $('set-body').innerHTML = `
+  <div class="panel"><div class="panel-h"><h3>Company information</h3></div><div class="panel-b">
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Company name</label><input id="s-name" value="${g('company_name')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Legal name</label><input id="s-legal" value="${g('legal_name')}"></div></div>
+    <div class="fg"><label class="lbl">Address</label><input id="s-addr" value="${g('address')}"></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Phone</label><input id="s-phone" value="${g('phone')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">PA license no.</label><input id="s-lic" value="${g('license_no')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Mileage rate $/mi</label><input type="number" step="0.01" id="s-mile" value="${g('default_mileage_rate')||'0.70'}"></div></div>
+    <button class="btn btn-primary" onclick="saveCompany()">Save company info</button>
+  </div></div>
+
+  <div class="panel"><div class="panel-h"><h3>Logo</h3></div><div class="panel-b">
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Shows on the login screen, the top bar, and invoice headers. A wide PNG or JPG works best.</div>
+    <input type="file" accept="image/*" onchange="uploadLogoFile(this)">
+    <div id="logo-preview" style="margin-top:12px">${Settings.company_logo_path ?
+      `<img data-photo="${esc(Settings.company_logo_path)}" style="max-width:260px;border-radius:8px;background:#fff;padding:8px">` :
+      '<span style="font-size:13px;color:var(--muted)">No logo uploaded yet.</span>'}</div>
+  </div></div>`;
+}
+
+async function saveCompany(){
+  await Promise.all([
+    saveSetting('company_name', $('s-name').value),
+    saveSetting('legal_name',   $('s-legal').value),
+    saveSetting('address',      $('s-addr').value),
+    saveSetting('phone',        $('s-phone').value),
+    saveSetting('license_no',   $('s-lic').value),
+    saveSetting('default_mileage_rate', $('s-mile').value),
+  ]);
+  alert('Company info saved.');
+}
+
+async function uploadLogoFile(input){
+  const f = input.files[0]; if (!f) return;
+  const box = $('logo-preview');
+  box.innerHTML = '<span style="font-size:13px;color:var(--muted)">Uploading...</span>';
+  try {
+    const path = await uploadPhoto(f, 'branding');
+    await saveSetting('company_logo_path', path);
+    box.innerHTML = `<img data-photo="${esc(path)}" style="max-width:260px;border-radius:8px;background:#fff;padding:8px">`;
+    applyLogo();
+  } catch(e){
+    box.innerHTML = '<span style="font-size:13px;color:var(--red)">Upload failed: ' + esc(e.message) + '</span>';
+  }
+}
+
+// swap the top bar wordmark for the uploaded logo
+async function applyLogo(){
+  if (!Settings.company_logo_path) return;
+  const url = await signPath(Settings.company_logo_path);
+  if (!url) return;
+  const box = document.querySelector('.tb-logo');
+  if (box) box.innerHTML = `<img src="${url}" alt="logo" style="height:36px;display:block">`;
+}
+
+// ---------- Invoice look ----------
+function setInvoice(){
+  const g = k => esc(Settings[k] || '');
+  $('set-body').innerHTML = `
+  <div class="panel"><div class="panel-h"><h3>Invoice appearance</h3></div><div class="panel-b">
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Invoice number prefix</label><input id="s-prefix" value="${g('invoice_prefix')||'INV'}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Default terms</label><input id="s-terms" value="${g('invoice_terms')||'Net 30'}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Accent color</label><input type="color" id="s-accent" value="${g('invoice_accent')||'#c4441e'}" style="height:40px;padding:3px"></div></div>
+    <div class="fg"><label class="lbl">Footer text</label><textarea id="s-footer" rows="3">${g('invoice_footer')}</textarea></div>
+    <button class="btn btn-primary" onclick="saveInvoiceLook()">Save</button>
+    <button class="btn" onclick="previewInvoiceLook()">Preview</button>
+  </div></div>
+  <div id="inv-preview"></div>`;
+}
+
+async function saveInvoiceLook(){
+  await Promise.all([
+    saveSetting('invoice_prefix', $('s-prefix').value),
+    saveSetting('invoice_terms',  $('s-terms').value),
+    saveSetting('invoice_accent', $('s-accent').value),
+    saveSetting('invoice_footer', $('s-footer').value),
+  ]);
+  alert('Invoice settings saved.');
+}
+
+function previewInvoiceLook(){
+  $('inv-preview').innerHTML = `<div class="panel"><div class="panel-h"><h3>Preview</h3></div>
+    <div class="panel-b" style="background:#fff">${invoiceHeaderHTML()}</div></div>`;
+}
+
+// shared header used by preview and by real invoices
+function invoiceHeaderHTML(){
+  const accent = Settings.invoice_accent || '#c4441e';
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${accent};padding-bottom:16px">
+    <div><div style="font-size:26px;font-weight:700;color:${accent};letter-spacing:-.5px">${esc(Settings.company_name || 'Penn Access & Mobility')}</div>
+      <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">${esc(Settings.legal_name || '')}<br>${esc(Settings.address || '')}<br>${esc(Settings.phone || '')} &middot; PA License #${esc(Settings.license_no || '')}</div></div>
+    <div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:2px;color:#333">INVOICE</div></div>
+  </div>`;
+}
+
+// ---------- Crew ----------
+function setCrew(){
+  const rows = Crew.map(c => `<tr>
+    <td><b>${esc(c.name)}</b>${c.email ? `<div style="font-size:11.5px;color:var(--muted)">${esc(c.email)}</div>` : ''}</td>
+    <td>${esc(c.worker_type || 'unknown')}</td>
+    <td style="text-align:right">$${(+c.hourly_cost||0).toFixed(2)}</td>
+    <td style="text-align:center">${c.active ? '<span class="badge b-green">Active</span>' : '<span class="badge b-gray">Inactive</span>'}</td>
+    <td style="text-align:right"><button class="btn btn-xs" onclick="editCrew('${c.id}')">Edit</button></td></tr>`).join('');
+  $('set-body').innerHTML = `<div class="panel">
+    <div class="panel-h"><h3>Crew</h3><button class="btn btn-xs btn-primary" onclick="editCrew('')">+ Add person</button></div>
+    <div class="panel-b" style="padding:0">
+    <table class="tbl"><thead><tr><th>Name</th><th>Type</th><th style="text-align:right">Cost /hr</th>
+    <th style="text-align:center">Status</th><th></th></tr></thead><tbody>
+    ${rows || '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No crew yet. Add yourself first.</td></tr>'}
+    </tbody></table></div></div>
+    <div style="font-size:12px;color:var(--muted);padding:0 2px">Cost per hour is what this person costs you. What a customer pays is set on their rate card.</div>`;
+}
+
+function editCrew(id){
+  const c = Crew.find(x => x.id === id) || {active:true, worker_type:'unknown', hourly_cost:0};
+  $('gen-body').innerHTML = `
+    <input type="hidden" id="cw-id" value="${id||''}">
+    <div class="fg"><label class="lbl">Name</label><input id="cw-name" value="${esc(c.name||'')}"></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Email</label><input id="cw-email" value="${esc(c.email||'')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Phone</label><input id="cw-phone" value="${esc(c.phone||'')}"></div></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Cost to you $/hr</label><input type="number" step="0.01" id="cw-cost" value="${c.hourly_cost||0}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Worker type</label><select id="cw-type">
+        <option value="unknown" ${c.worker_type==='unknown'?'selected':''}>Not decided yet</option>
+        <option value="employee" ${c.worker_type==='employee'?'selected':''}>W-2 employee</option>
+        <option value="subcontractor" ${c.worker_type==='subcontractor'?'selected':''}>1099 subcontractor</option>
+      </select></div></div>
+    <div class="fg"><label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="cw-active" style="width:auto" ${c.active!==false?'checked':''}> Active</label></div>
+    <div class="fg"><label class="lbl">Notes</label><textarea id="cw-notes" rows="2">${esc(c.notes||'')}</textarea></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveCrew()">Save</button>`;
+  $('gen-title').textContent = 'Crew member';
+  openOv('ov-gen');
+}
+
+async function saveCrew(){
+  const id = $('cw-id').value;
+  const row = {
+    name: $('cw-name').value.trim(),
+    email: $('cw-email').value || null,
+    phone: $('cw-phone').value || null,
+    hourly_cost: +$('cw-cost').value || 0,
+    worker_type: $('cw-type').value,
+    active: $('cw-active').checked,
+    notes: $('cw-notes').value || null
+  };
+  if (!row.name) { alert('Enter a name.'); return; }
+  const { error } = id ? await sb.from('crew').update(row).eq('id', id)
+                       : await sb.from('crew').insert(row);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  closeOv('ov-gen');
+  const { data } = await sb.from('crew').select('*').order('sort_order');
+  Crew = data || [];
+  renderSettings();
+}
+
+// ---------- Subcontractors ----------
+function setSubs(){
+  const rows = Payees.map(p => `<tr>
+    <td><b>${esc(p.name)}</b>${p.business_name ? `<div style="font-size:11.5px;color:var(--muted)">${esc(p.business_name)}</div>` : ''}</td>
+    <td>${esc(p.trade || '')}</td>
+    <td>${esc(p.typical_work || '')}</td>
+    <td style="text-align:right">${p.default_rate ? '$' + (+p.default_rate).toFixed(2) + ' /' + esc(p.rate_unit || 'hour') : '&mdash;'}</td>
+    <td style="text-align:center">${p.w9_on_file ? '<span class="badge b-green">W-9</span>' : '<span class="badge b-red">No W-9</span>'}</td>
+    <td style="text-align:right"><button class="btn btn-xs" onclick="editPayee('${p.id}')">Edit</button></td></tr>`).join('');
+  $('set-body').innerHTML = `<div class="panel">
+    <div class="panel-h"><h3>Subcontractors</h3><button class="btn btn-xs btn-primary" onclick="editPayee('')">+ Add sub</button></div>
+    <div class="panel-b" style="padding:0">
+    <table class="tbl"><thead><tr><th>Name</th><th>Trade</th><th>Typically used for</th>
+    <th style="text-align:right">Your rate</th><th style="text-align:center">W-9</th><th></th></tr></thead><tbody>
+    ${rows || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No subcontractors yet</td></tr>'}
+    </tbody></table></div></div>
+    <div style="font-size:12px;color:var(--muted);padding:0 2px">These feed the 1099 tab automatically as you log payments to them.</div>`;
+}
+
+// ---------- Work types ----------
+function setWorkTypes(){
+  const rows = WorkTypes.map(w => `<tr>
+    <td><b>${esc(w.name)}</b></td>
+    <td style="text-align:right"><button class="btn btn-xs" onclick="renameWorkType('${w.id}')">Rename</button>
+    <button class="btn btn-xs" onclick="removeWorkType('${w.id}')">Remove</button></td></tr>`).join('');
+  $('set-body').innerHTML = `<div class="panel">
+    <div class="panel-h"><h3>Work types</h3><button class="btn btn-xs btn-primary" onclick="addWorkType()">+ Add</button></div>
+    <div class="panel-b" style="padding:0"><table class="tbl"><tbody>${rows}</tbody></table></div></div>
+    <div style="font-size:12px;color:var(--muted);padding:0 2px">These are the choices on the time clock and the lines on a rate card. Drive time and mileage are work types too.</div>`;
+}
+
+async function addWorkType(){
+  const n = prompt('New work type name:'); if (!n) return;
+  await sb.from('work_types').insert({name: n.trim(), sort_order: WorkTypes.length + 1});
+  await loadTimeData(); await loadSettingsData(); renderSettings();
+}
+async function renameWorkType(id){
+  const w = WorkTypes.find(x => x.id === id); if (!w) return;
+  const n = prompt('Rename work type:', w.name); if (!n) return;
+  await sb.from('work_types').update({name: n.trim()}).eq('id', id);
+  await loadTimeData(); await loadSettingsData(); renderSettings();
+}
+async function removeWorkType(id){
+  if (!confirm('Remove this work type? Past time entries keep the name they were saved with.')) return;
+  await sb.from('work_types').update({active: false}).eq('id', id);
+  await loadTimeData(); await loadSettingsData(); renderSettings();
+}
+
+// ---------- Rate cards ----------
+function cardLines(cardId){ return RateLines.filter(l => l.rate_card_id === cardId).sort((a,b) => a.sort_order - b.sort_order); }
+
+function setRates(){
+  const byCust = {};
+  RateCards.forEach(c => { (byCust[c.customer_id] = byCust[c.customer_id] || []).push(c); });
+
+  const blocks = Object.entries(byCust).map(([cid, cards]) => {
+    const cust = Custs.find(c => c.id === cid);
+    return `<div class="panel">
+      <div class="panel-h"><h3>${esc(cust ? cust.name : 'Unknown customer')}</h3>
+        <button class="btn btn-xs" onclick="editRateCard('','${cid}')">+ Add tier</button></div>
+      <div class="panel-b">
+      ${cards.map(card => {
+        const lines = cardLines(card.id);
+        return `<div style="border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div><b>${esc(card.tier_name)}</b> ${card.is_default ? '<span class="badge b-accent">Default</span>' : ''}
+              ${card.notes ? `<div style="font-size:11.5px;color:var(--muted)">${esc(card.notes)}</div>` : ''}</div>
+            <div><button class="btn btn-xs" onclick="editRateCard('${card.id}','${cid}')">Edit tier</button>
+              <button class="btn btn-xs btn-primary" onclick="addRateLine('${card.id}')">+ Rate</button></div>
+          </div>
+          ${lines.length ? `<table class="tbl"><tbody>${lines.map(l => `<tr>
+            <td>${esc(l.label)}</td>
+            <td style="text-align:right"><b>$${(+l.rate||0).toFixed(2)}</b> <span style="color:var(--muted)">/ ${esc(l.unit)}</span></td>
+            <td style="text-align:right;width:120px"><button class="btn btn-xs" onclick="editRateLine('${l.id}')">Edit</button>
+              <button class="btn btn-xs" onclick="deleteRateLine('${l.id}')">&times;</button></td></tr>`).join('')}</tbody></table>`
+            : '<div style="font-size:12.5px;color:var(--muted)">No rates on this tier yet.</div>'}
+        </div>`;
+      }).join('')}
+      </div></div>`;
+  }).join('');
+
+  const custOpts = Custs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('set-body').innerHTML = `
+    <div class="panel"><div class="panel-b">
+      <div style="font-size:13px;margin-bottom:10px">A rate card is what one customer pays <b>you</b>. Most have a single tier called Standard. Add more tiers when the same customer pays different rates for different work, like a contractor with apartment properties.</div>
+      <div class="fr"><div class="fg" style="flex:2"><label class="lbl">Customer</label><select id="rc-newcust">${custOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Tier name</label><input id="rc-newtier" placeholder="Standard"></div>
+        <div class="fg" style="align-self:flex-end"><button class="btn btn-primary" onclick="quickAddCard()">Create rate card</button></div></div>
+    </div></div>
+    ${blocks || '<div class="panel"><div class="panel-b" style="color:var(--muted);font-size:13px">No rate cards yet. Create one above.</div></div>'}`;
+}
+
+async function quickAddCard(){
+  const cid = $('rc-newcust').value;
+  const tier = ($('rc-newtier').value || 'Standard').trim();
+  if (!cid) { alert('Pick a customer.'); return; }
+  const existing = RateCards.filter(c => c.customer_id === cid);
+  const { error } = await sb.from('rate_cards').insert({customer_id: cid, tier_name: tier, is_default: existing.length === 0});
+  if (error) { alert('Could not create: ' + error.message); return; }
+  await loadSettingsData(); renderSettings();
+}
+
+function editRateCard(id, cid){
+  const c = RateCards.find(x => x.id === id) || {customer_id: cid, tier_name: '', is_default: false};
+  $('gen-body').innerHTML = `
+    <input type="hidden" id="rc-id" value="${id||''}"><input type="hidden" id="rc-cust" value="${cid||c.customer_id}">
+    <div class="fg"><label class="lbl">Tier name</label><input id="rc-tier" value="${esc(c.tier_name||'')}" placeholder="Standard, Apartments, After hours"></div>
+    <div class="fg"><label class="lbl">Notes</label><input id="rc-notes" value="${esc(c.notes||'')}" placeholder="When this tier applies"></div>
+    <div class="fg"><label style="display:flex;align-items:center;gap:8px;font-size:13px">
+      <input type="checkbox" id="rc-def" style="width:auto" ${c.is_default?'checked':''}> Use this tier by default</label></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveRateCard()">Save tier</button>
+    ${id ? `<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="deleteRateCard('${id}')">Delete this tier</button>` : ''}`;
+  $('gen-title').textContent = 'Rate card tier';
+  openOv('ov-gen');
+}
+
+async function saveRateCard(){
+  const id = $('rc-id').value;
+  const row = {
+    customer_id: $('rc-cust').value,
+    tier_name: $('rc-tier').value.trim() || 'Standard',
+    notes: $('rc-notes').value || null,
+    is_default: $('rc-def').checked
+  };
+  if (row.is_default) await sb.from('rate_cards').update({is_default:false}).eq('customer_id', row.customer_id);
+  const { error } = id ? await sb.from('rate_cards').update(row).eq('id', id)
+                       : await sb.from('rate_cards').insert(row);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  closeOv('ov-gen'); await loadSettingsData(); renderSettings();
+}
+
+async function deleteRateCard(id){
+  if (!confirm('Delete this tier and its rates?')) return;
+  await sb.from('rate_cards').delete().eq('id', id);
+  closeOv('ov-gen'); await loadSettingsData(); renderSettings();
+}
+
+function addRateLine(cardId){ editRateLine('', cardId); }
+
+function editRateLine(id, cardId){
+  const l = RateLines.find(x => x.id === id) || {rate_card_id: cardId, unit: 'hour', rate: 0};
+  const wtOpts = `<option value="">&mdash; custom label &mdash;</option>` +
+    WorkTypes.map(w => `<option value="${w.id}" ${l.work_type_id===w.id?'selected':''}>${esc(w.name)}</option>`).join('');
+  $('gen-body').innerHTML = `
+    <input type="hidden" id="rl-id" value="${id||''}"><input type="hidden" id="rl-card" value="${cardId||l.rate_card_id}">
+    <div class="fg"><label class="lbl">Work type</label><select id="rl-wt" onchange="rlSyncLabel()">${wtOpts}</select></div>
+    <div class="fg"><label class="lbl">Label on the invoice</label><input id="rl-label" value="${esc(l.label||'')}" placeholder="Drive time, In house, Mileage"></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Rate $</label><input type="number" step="0.01" id="rl-rate" value="${l.rate||0}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Per</label><select id="rl-unit">
+        <option value="hour" ${l.unit==='hour'?'selected':''}>hour</option>
+        <option value="mile" ${l.unit==='mile'?'selected':''}>mile</option>
+        <option value="day"  ${l.unit==='day'?'selected':''}>day</option>
+        <option value="flat" ${l.unit==='flat'?'selected':''}>flat fee</option>
+      </select></div></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveRateLine()">Save rate</button>`;
+  $('gen-title').textContent = 'Rate';
+  openOv('ov-gen');
+}
+
+function rlSyncLabel(){
+  const w = WorkTypes.find(x => x.id === $('rl-wt').value);
+  if (w && !$('rl-label').value) $('rl-label').value = w.name;
+}
+
+async function saveRateLine(){
+  const id = $('rl-id').value;
+  const row = {
+    rate_card_id: $('rl-card').value,
+    work_type_id: $('rl-wt').value || null,
+    label: $('rl-label').value.trim(),
+    rate: +$('rl-rate').value || 0,
+    unit: $('rl-unit').value,
+    sort_order: RateLines.filter(l => l.rate_card_id === $('rl-card').value).length
+  };
+  if (!row.label) { alert('Give it a label.'); return; }
+  const { error } = id ? await sb.from('rate_card_lines').update(row).eq('id', id)
+                       : await sb.from('rate_card_lines').insert(row);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  closeOv('ov-gen'); await loadSettingsData(); renderSettings();
+}
+
+async function deleteRateLine(id){
+  if (!confirm('Delete this rate?')) return;
+  await sb.from('rate_card_lines').delete().eq('id', id);
+  await loadSettingsData(); renderSettings();
+}
+
+// ============================================================================
+// RATE RESOLUTION using rate cards
+// The customer's card decides what you get paid. The agency on a job is
+// recorded separately and never changes the rate.
+// ============================================================================
+function cardForCustomer(customerId, tierName){
+  const cards = RateCards.filter(c => c.customer_id === customerId && c.active !== false);
+  if (!cards.length) return null;
+  if (tierName) { const m = cards.find(c => c.tier_name === tierName); if (m) return m; }
+  return cards.find(c => c.is_default) || cards[0];
+}
+
+function billRateFor(customerId, tierName, workTypeId, workTypeName){
+  const card = cardForCustomer(customerId, tierName);
+  if (!card) return {rate:0, label:workTypeName||'Labor', unit:'hour', card:null};
+  const lines = cardLines(card.id);
+  let l = lines.find(x => x.work_type_id === workTypeId);
+  if (!l && workTypeName) l = lines.find(x => (x.label||'').toLowerCase() === String(workTypeName).toLowerCase());
+  if (!l) l = lines.find(x => x.unit === 'hour');
+  return l ? {rate:+l.rate||0, label:l.label, unit:l.unit, card}
+           : {rate:0, label:workTypeName||'Labor', unit:'hour', card};
+}
+
+function mileageRateFor(customerId, tierName){
+  const card = cardForCustomer(customerId, tierName);
+  if (card) {
+    const l = cardLines(card.id).find(x => x.unit === 'mile');
+    if (l) return +l.rate || 0;
+  }
+  return +(Settings.default_mileage_rate || 0) || 0;
+}
+
+
+// ============================================================================
+// TIME CLOCK v2 - rate cards, tiers, mileage, weekly view
+// ============================================================================
+let weekOffset = 0, timeView = 'clock';
+
+function weekStart(off){
+  const d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - d.getDay() + (off * 7));
+  return d;
+}
+function weekEnd(off){ const d = weekStart(off); d.setDate(d.getDate()+6); return d; }
+function ymd(d){ return d.toISOString().slice(0,10); }
+function weekLabel(off){
+  const a = weekStart(off), b = weekEnd(off);
+  const f = x => x.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  return f(a) + ' - ' + f(b) + (off===0 ? ' (this week)' : '');
+}
+function entriesInWeek(off){
+  const a = ymd(weekStart(off)), b = ymd(weekEnd(off));
+  return TimeEntries.filter(t => t.clock_out && t.work_date >= a && t.work_date <= b);
+}
+
+function setTimeView(v){ timeView = v; renderTime(); }
+function shiftWeek(n){ weekOffset += n; renderTime(); }
+
+function renderTime(){
+  const el = $('v-time'); if (!el) return;
+  el.innerHTML = `<div class="wrap">
+    <div class="page-head"><div><h1>Time clock</h1><div class="sub">Hours and miles flow into invoicing</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm ${timeView==='clock'?'btn-primary':''}" onclick="setTimeView('clock')">Clock</button>
+        <button class="btn btn-sm ${timeView==='week'?'btn-primary':''}" onclick="setTimeView('week')">Week view</button>
+      </div></div>
+    <div id="time-body"></div></div>`;
+  timeView === 'week' ? renderWeekView() : renderClockView();
+}
+
+// ---------- Clock ----------
+function renderClockView(){
+  const me = localStorage.getItem('pam_crew') || '';
+  const crewOpts = Crew.filter(c => c.active !== false)
+    .map(c => `<option value="${c.id}" ${c.id===me?'selected':''}>${esc(c.name)}</option>`).join('');
+  const custOpts = `<option value="">&mdash; none / internal &mdash;</option>` +
+    Custs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const agencyOpts = `<option value="">&mdash; no agency &mdash;</option>` +
+    Custs.filter(c => c.is_agency || c.category === 'agency').map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const jobOpts = `<option value="">&mdash; no job &mdash;</option>` +
+    Jobs.map(j => `<option value="${j.id}">${esc(j.title || j.job_number || 'Job')}</option>`).join('');
+  const wtOpts = WorkTypes.map(w => `<option value="${w.id}">${esc(w.name)}</option>`).join('');
+
+  let card;
+  if (activeEntry) {
+    card = `<div class="panel" style="border-color:var(--green)"><div class="panel-b" style="text-align:center;padding:22px">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">On the clock</div>
+      <div style="font-size:15px;font-weight:600">${esc(activeEntry.crew_name||'')}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${esc(activeEntry.work_type_name||'')}${activeEntry.customer_name?' &middot; '+esc(activeEntry.customer_name):''}${activeEntry.tier_name?' ('+esc(activeEntry.tier_name)+')':''}</div>
+      <div id="tick" class="disp" style="font-size:40px;color:var(--green);margin-bottom:16px">0:00:00</div>
+      <button class="btn btn-danger" style="font-size:15px;padding:11px 26px" onclick="clockOut()">Clock out</button>
+    </div></div>`;
+  } else {
+    card = `<div class="panel"><div class="panel-h"><h3>Clock in</h3></div><div class="panel-b">
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="tk-crew">${crewOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">What kind of work</label><select id="tk-wt" onchange="previewRate()">${wtOpts}</select></div></div>
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who pays (customer)</label><select id="tk-cust" onchange="tierOptions();previewRate()">${custOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Rate tier</label><select id="tk-tier" onchange="previewRate()"><option value="">Default</option></select></div></div>
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Agency (if the work is for one)</label><select id="tk-agency">${agencyOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Job</label><select id="tk-job">${jobOpts}</select></div></div>
+      <div class="fg"><label class="lbl">Notes</label><input id="tk-notes" placeholder="What are you working on?"></div>
+      <div id="tk-rate" style="font-size:12px;color:var(--muted);margin-bottom:12px"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;font-size:15px;padding:11px" onclick="clockIn()">Clock in</button>
+    </div></div>`;
+  }
+
+  const wk = entriesInWeek(0);
+  const hrs = wk.reduce((a,t) => a + (+t.hours||0), 0);
+  const bill = wk.reduce((a,t) => a + (+t.bill_total||0) + (+t.mileage_total||0), 0);
+  const cost = wk.reduce((a,t) => a + (+t.cost_total||0), 0);
+  const mi = wk.reduce((a,t) => a + (+t.miles||0), 0);
+
+  $('time-body').innerHTML = `
+    <div class="kgrid">
+      <div class="kpi"><div class="k-label">Hours this week</div><div class="k-val">${hrs.toFixed(1)}</div></div>
+      <div class="kpi"><div class="k-label">Miles this week</div><div class="k-val">${mi.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Billable</div><div class="k-val">$${bill.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Labor cost</div><div class="k-val">$${cost.toFixed(0)}</div></div>
+    </div>
+    ${card}
+    <div class="panel"><div class="panel-h"><h3>Add hours manually</h3></div><div class="panel-b">
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="mn-crew">${crewOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Date</label><input type="date" id="mn-date" value="${ymd(new Date())}"></div>
+        <div class="fg" style="flex:1"><label class="lbl">Hours</label><input type="number" step="0.25" id="mn-hours" value="8"></div>
+        <div class="fg" style="flex:1"><label class="lbl">Miles</label><input type="number" step="1" id="mn-miles" value="0"></div></div>
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Work type</label><select id="mn-wt">${wtOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Who pays</label><select id="mn-cust" onchange="tierOptions('mn')">${custOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">Tier</label><select id="mn-tier"><option value="">Default</option></select></div></div>
+      <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Agency</label><select id="mn-agency">${agencyOpts}</select></div>
+        <div class="fg" style="flex:2"><label class="lbl">Notes</label><input id="mn-notes"></div></div>
+      <button class="btn" style="width:100%;justify-content:center" onclick="addManualTime()">Add entry</button>
+    </div></div>`;
+  if (activeEntry) startTick(); else { tierOptions(); previewRate(); }
+}
+
+function tierOptions(prefix){
+  const p = prefix || 'tk';
+  const cid = $(p+'-cust') ? $(p+'-cust').value : '';
+  const sel = $(p+'-tier'); if (!sel) return;
+  const cards = RateCards.filter(c => c.customer_id === cid && c.active !== false);
+  sel.innerHTML = cards.length
+    ? cards.map(c => `<option value="${esc(c.tier_name)}" ${c.is_default?'selected':''}>${esc(c.tier_name)}</option>`).join('')
+    : '<option value="">No rate card set</option>';
+}
+
+function previewRate(){
+  const box = $('tk-rate'); if (!box) return;
+  const cid = $('tk-cust').value, tier = $('tk-tier') ? $('tk-tier').value : '';
+  const wtId = $('tk-wt').value;
+  const wt = WorkTypes.find(w => w.id === wtId);
+  const b = billRateFor(cid, tier, wtId, wt ? wt.name : '');
+  const mr = mileageRateFor(cid, tier);
+  const crew = Crew.find(c => c.id === $('tk-crew').value) || {};
+  box.innerHTML = cid && !b.card
+    ? `<span style="color:var(--amber)">No rate card for this customer. Set one in Settings &rarr; Rate cards.</span>`
+    : `Bills at <b>$${b.rate.toFixed(2)} / ${esc(b.unit)}</b> as "${esc(b.label)}" &middot; mileage $${mr.toFixed(2)}/mi &middot; costs you $${(+crew.hourly_cost||0).toFixed(2)}/hr`;
+}
+
+function startTick(){
+  clearInterval(tickTimer);
+  tickTimer = setInterval(() => {
+    const el = $('tick'); if (!el || !activeEntry) return;
+    const s = Math.floor((Date.now() - new Date(activeEntry.clock_in).getTime())/1000);
+    el.textContent = `${Math.floor(s/3600)}:${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  }, 1000);
+}
+
+async function clockIn(){
+  const cid = $('tk-crew').value;
+  if (!cid) { alert('Pick who is clocking in. Add crew in Settings if the list is empty.'); return; }
+  localStorage.setItem('pam_crew', cid);
+  const cu = $('tk-cust').value || null, tier = $('tk-tier') ? $('tk-tier').value : null;
+  const wtId = $('tk-wt').value;
+  const wt = WorkTypes.find(w => w.id === wtId) || {};
+  const ag = $('tk-agency').value || null;
+  const b = billRateFor(cu, tier, wtId, wt.name);
+  const crew = Crew.find(c => c.id === cid) || {};
+  const card = cardForCustomer(cu, tier);
+  const { error } = await sb.from('time_entries').insert({
+    crew_id: cid, crew_name: crew.name,
+    work_type_id: wtId, work_type_name: wt.name,
+    customer_id: cu, customer_name: cu ? (Custs.find(c=>c.id===cu)||{}).name : null,
+    agency_id: ag, agency_name: ag ? (Custs.find(c=>c.id===ag)||{}).name : null,
+    rate_card_id: card ? card.id : null, tier_name: tier || null,
+    job_id: $('tk-job').value || null,
+    clock_in: new Date().toISOString(),
+    cost_rate: +crew.hourly_cost || 0, bill_rate: b.rate,
+    mileage_rate: mileageRateFor(cu, tier),
+    notes: $('tk-notes').value || null
+  });
+  if (error) { alert('Could not clock in: ' + error.message); return; }
+  await loadTimeData(); renderTime();
+}
+
+async function clockOut(){
+  if (!activeEntry) return;
+  const miles = +(prompt('Miles driven for this job? (0 if none)', '0') || 0);
+  const out = new Date();
+  const hours = Math.round((out - new Date(activeEntry.clock_in))/36e5 * 100)/100;
+  const mrate = +activeEntry.mileage_rate || 0;
+  const { error } = await sb.from('time_entries').update({
+    clock_out: out.toISOString(), hours,
+    cost_total: Math.round(hours * (+activeEntry.cost_rate||0) * 100)/100,
+    bill_total: Math.round(hours * (+activeEntry.bill_rate||0) * 100)/100,
+    miles, mileage_total: Math.round(miles * mrate * 100)/100
+  }).eq('id', activeEntry.id);
+  if (error) { alert('Could not clock out: ' + error.message); return; }
+  clearInterval(tickTimer); await loadTimeData(); renderTime();
+}
+
+async function addManualTime(){
+  const cid = $('mn-crew').value;
+  const hours = +$('mn-hours').value || 0;
+  const miles = +$('mn-miles').value || 0;
+  if (!cid || (hours <= 0 && miles <= 0)) { alert('Pick a person and enter hours or miles.'); return; }
+  const cu = $('mn-cust').value || null, tier = $('mn-tier') ? $('mn-tier').value : null;
+  const wtId = $('mn-wt').value;
+  const wt = WorkTypes.find(w => w.id === wtId) || {};
+  const ag = $('mn-agency').value || null;
+  const b = billRateFor(cu, tier, wtId, wt.name);
+  const mrate = mileageRateFor(cu, tier);
+  const crew = Crew.find(c => c.id === cid) || {};
+  const card = cardForCustomer(cu, tier);
+  const now = new Date().toISOString();
+  const { error } = await sb.from('time_entries').insert({
+    crew_id: cid, crew_name: crew.name,
+    work_type_id: wtId, work_type_name: wt.name,
+    customer_id: cu, customer_name: cu ? (Custs.find(c=>c.id===cu)||{}).name : null,
+    agency_id: ag, agency_name: ag ? (Custs.find(c=>c.id===ag)||{}).name : null,
+    rate_card_id: card ? card.id : null, tier_name: tier || null,
+    work_date: $('mn-date').value, clock_in: now, clock_out: now,
+    hours, cost_rate: +crew.hourly_cost||0, bill_rate: b.rate,
+    cost_total: Math.round(hours*(+crew.hourly_cost||0)*100)/100,
+    bill_total: Math.round(hours*b.rate*100)/100,
+    miles, mileage_rate: mrate, mileage_total: Math.round(miles*mrate*100)/100,
+    notes: $('mn-notes').value || null
+  });
+  if (error) { alert('Could not add: ' + error.message); return; }
+  await loadTimeData(); renderTime();
+}
+
+async function deleteTimeEntry(id){
+  if (!confirm('Delete this time entry?')) return;
+  await sb.from('time_entries').delete().eq('id', id);
+  await loadTimeData(); renderTime();
+}
+
+// ---------- Week view ----------
+function renderWeekView(){
+  const list = entriesInWeek(weekOffset);
+  const hrs = list.reduce((a,t)=>a+(+t.hours||0),0);
+  const mi  = list.reduce((a,t)=>a+(+t.miles||0),0);
+  const lab = list.reduce((a,t)=>a+(+t.bill_total||0),0);
+  const mil = list.reduce((a,t)=>a+(+t.mileage_total||0),0);
+  const cost= list.reduce((a,t)=>a+(+t.cost_total||0),0);
+
+  const byCust = {};
+  list.forEach(t => {
+    const k = t.customer_id || 'none';
+    byCust[k] = byCust[k] || {name: t.customer_name || 'Internal / no customer', hours:0, miles:0, bill:0, unbilled:0, entries:[]};
+    byCust[k].hours += +t.hours||0; byCust[k].miles += +t.miles||0;
+    byCust[k].bill  += (+t.bill_total||0)+(+t.mileage_total||0);
+    if (!t.billed) byCust[k].unbilled += (+t.bill_total||0)+(+t.mileage_total||0);
+    byCust[k].entries.push(t);
+  });
+
+  const byPerson = {};
+  list.forEach(t => {
+    const k = t.crew_name || 'Unknown';
+    byPerson[k] = byPerson[k] || {hours:0, miles:0, cost:0};
+    byPerson[k].hours += +t.hours||0; byPerson[k].miles += +t.miles||0; byPerson[k].cost += +t.cost_total||0;
+  });
+
+  $('time-body').innerHTML = `
+    <div class="panel"><div class="panel-b" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <button class="btn btn-sm" onclick="shiftWeek(-1)">&larr; Previous</button>
+      <div style="font-weight:600">${weekLabel(weekOffset)}</div>
+      <button class="btn btn-sm" onclick="shiftWeek(1)" ${weekOffset>=0?'disabled style="opacity:.4"':''}>Next &rarr;</button>
+    </div></div>
+    <div class="kgrid">
+      <div class="kpi"><div class="k-label">Hours</div><div class="k-val">${hrs.toFixed(1)}</div></div>
+      <div class="kpi"><div class="k-label">Miles</div><div class="k-val">${mi.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Labor billable</div><div class="k-val">$${lab.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Mileage billable</div><div class="k-val">$${mil.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Week total</div><div class="k-val" style="color:var(--accent2)">$${(lab+mil).toFixed(0)}</div></div>
+    </div>
+
+    <div class="panel"><div class="panel-h"><h3>By customer</h3></div><div class="panel-b">
+      ${Object.entries(byCust).map(([k,v]) => `<div class="lrow">
+        <div><b>${esc(v.name)}</b><div style="font-size:11.5px;color:var(--muted)">${v.hours.toFixed(2)} hrs${v.miles?' &middot; '+v.miles.toFixed(0)+' mi':''} &middot; ${v.entries.length} entries</div></div>
+        <div style="text-align:right"><div style="font-weight:600">$${v.bill.toFixed(2)}</div>
+          ${v.unbilled>0 && k!=='none' ? `<button class="btn btn-xs btn-primary" onclick="invoiceWeekFor('${k}',${weekOffset})">Invoice $${v.unbilled.toFixed(2)}</button>` : '<span style="font-size:11.5px;color:var(--muted)">all invoiced</span>'}</div>
+      </div>`).join('') || '<div style="color:var(--muted);font-size:13px">Nothing logged this week.</div>'}
+    </div></div>
+
+    <div class="panel"><div class="panel-h"><h3>By person</h3></div><div class="panel-b">
+      ${Object.entries(byPerson).map(([k,v]) => `<div class="lrow">
+        <div><b>${esc(k)}</b><div style="font-size:11.5px;color:var(--muted)">${v.miles.toFixed(0)} miles</div></div>
+        <div style="text-align:right"><div style="font-weight:600">${v.hours.toFixed(2)} hrs</div>
+          <div style="font-size:11.5px;color:var(--muted)">cost $${v.cost.toFixed(2)}</div></div>
+      </div>`).join('') || '<div style="color:var(--muted);font-size:13px">Nothing logged.</div>'}
+    </div></div>
+
+    <div class="panel"><div class="panel-h"><h3>Every entry</h3></div><div class="panel-b" style="padding:0">
+      <table class="tbl"><thead><tr><th>Date</th><th>Who</th><th>Customer</th><th>Work</th>
+        <th style="text-align:right">Hrs</th><th style="text-align:right">Mi</th>
+        <th style="text-align:right">Billable</th><th style="text-align:center">Status</th><th></th></tr></thead>
+      <tbody>${list.map(t => `<tr>
+        <td>${t.work_date||''}</td><td>${esc(t.crew_name||'')}</td>
+        <td>${esc(t.customer_name||'&mdash;')}${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
+        <td>${esc(t.work_type_name||'')}${t.tier_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.tier_name)}</div>`:''}</td>
+        <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
+        <td style="text-align:right">${(+t.miles||0)||'&mdash;'}</td>
+        <td style="text-align:right">$${((+t.bill_total||0)+(+t.mileage_total||0)).toFixed(2)}</td>
+        <td style="text-align:center">${t.billed?'<span class="badge b-green">Invoiced</span>':'<span class="badge b-gray">Open</span>'}</td>
+        <td style="text-align:right"><button class="btn btn-xs" onclick="deleteTimeEntry('${t.id}')">&times;</button></td>
+      </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No entries this week</td></tr>'}
+      </tbody></table>
+    </div></div>`;
+}
+
+async function invoiceWeekFor(customerId, off){
+  const a = ymd(weekStart(off)), b = ymd(weekEnd(off));
+  await buildInvoice(customerId, {from:a, to:b, label:weekLabel(off)});
+}
+
+
+
+// ============================================================================
+// INVOICING v2 - rate card lines, mileage, branding, custom invoices
+// ============================================================================
+
+async function buildInvoice(customerId, period){
+  const all = TimeEntries.filter(t => t.clock_out && !t.billed && t.customer_id === customerId);
+  const list = period ? all.filter(t => t.work_date >= period.from && t.work_date <= period.to) : all;
+  const cust = Custs.find(c => c.id === customerId);
+  const prefix = Settings.invoice_prefix || 'INV';
+  const no = `${prefix}-${new Date().getFullYear()}-${String(Invoices.length + 1).padStart(4,'0')}`;
+  const due = new Date(); due.setDate(due.getDate() + 30);
+
+  // group hours by the rate card label they were billed under
+  const groups = {};
+  let mileTotal = 0, milesTotal = 0, mileRate = 0;
+  list.forEach(t => {
+    const key = (t.work_type_name || 'Labor') + '|' + (+t.bill_rate || 0);
+    groups[key] = groups[key] || {label: t.work_type_name || 'Labor', rate: +t.bill_rate || 0, qty: 0, amount: 0};
+    groups[key].qty += +t.hours || 0;
+    groups[key].amount += +t.bill_total || 0;
+    milesTotal += +t.miles || 0;
+    mileTotal += +t.mileage_total || 0;
+    if (+t.mileage_rate) mileRate = +t.mileage_rate;
+  });
+
+  const subtotal = Object.values(groups).reduce((a,g) => a + g.amount, 0) + mileTotal;
+
+  const { data, error } = await sb.from('invoices').insert({
+    invoice_no: no, customer_id: customerId || null, customer_name: cust ? cust.name : '',
+    status: 'draft', issue_date: ymd(new Date()), due_date: ymd(due),
+    period_start: period ? period.from : null, period_end: period ? period.to : null,
+    period_label: period ? period.label : null,
+    subtotal, total: subtotal, mileage_total: mileTotal,
+    terms: Settings.invoice_terms || 'Net 30'
+  }).select();
+  if (error) { alert('Could not create invoice: ' + error.message); return; }
+  const inv = data[0];
+
+  let n = 0;
+  for (const g of Object.values(groups)) {
+    await sb.from('invoice_lines').insert({
+      invoice_id: inv.id, description: g.label,
+      qty: Math.round(g.qty * 100)/100, unit: 'hour', unit_label: 'hr',
+      rate: g.rate, amount: Math.round(g.amount * 100)/100,
+      source_type: 'time', sort_order: n++
+    });
+  }
+  if (mileTotal > 0) {
+    await sb.from('invoice_lines').insert({
+      invoice_id: inv.id, description: 'Mileage',
+      qty: Math.round(milesTotal * 10)/10, unit: 'mile', unit_label: 'mi',
+      rate: mileRate, amount: Math.round(mileTotal * 100)/100,
+      source_type: 'mileage', sort_order: n++
+    });
+  }
+  if (list.length) await sb.from('time_entries').update({billed:true, invoice_id: inv.id}).in('id', list.map(t => t.id));
+
+  await loadTimeData(); await loadInvoiceData();
+  renderInvoices(); openInvoice(inv.id);
+}
+
+// blank invoice you type yourself
+async function newCustomInvoice(){
+  const custOpts = Custs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('gen-body').innerHTML = `
+    <div class="fg"><label class="lbl">Customer</label><select id="ci-cust">${custOpts}</select></div>
+    <div class="fg"><label class="lbl">Note on the invoice</label><input id="ci-note" placeholder="Optional"></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Creates an empty invoice. Add your own line items after it opens.</div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="createCustomInvoice()">Create blank invoice</button>`;
+  $('gen-title').textContent = 'Custom invoice';
+  openOv('ov-gen');
+}
+
+async function createCustomInvoice(){
+  const cid = $('ci-cust').value;
+  const cust = Custs.find(c => c.id === cid);
+  const prefix = Settings.invoice_prefix || 'INV';
+  const no = `${prefix}-${new Date().getFullYear()}-${String(Invoices.length + 1).padStart(4,'0')}`;
+  const due = new Date(); due.setDate(due.getDate() + 30);
+  const { data, error } = await sb.from('invoices').insert({
+    invoice_no: no, customer_id: cid, customer_name: cust ? cust.name : '',
+    status:'draft', issue_date: ymd(new Date()), due_date: ymd(due),
+    subtotal:0, total:0, notes: $('ci-note').value || null,
+    terms: Settings.invoice_terms || 'Net 30'
+  }).select();
+  if (error) { alert('Could not create: ' + error.message); return; }
+  closeOv('ov-gen');
+  await loadInvoiceData(); renderInvoices(); openInvoice(data[0].id);
+}
+
+function addInvoiceLine(invId){
+  $('gen-body').innerHTML = `
+    <div class="fg"><label class="lbl">Description</label><input id="il-desc" placeholder="Materials, trip charge, labor"></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Qty</label><input type="number" step="0.01" id="il-qty" value="1"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Unit</label><input id="il-unit" value="each"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Rate $</label><input type="number" step="0.01" id="il-rate" value="0"></div></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveInvoiceLine('${invId}')">Add line</button>`;
+  $('gen-title').textContent = 'Invoice line';
+  openOv('ov-gen');
+}
+
+async function saveInvoiceLine(invId){
+  const qty = +$('il-qty').value || 0, rate = +$('il-rate').value || 0;
+  const row = {
+    invoice_id: invId, description: $('il-desc').value.trim() || 'Line item',
+    qty, unit: $('il-unit').value || 'each', unit_label: $('il-unit').value || '',
+    rate, amount: Math.round(qty * rate * 100)/100,
+    source_type: 'manual',
+    sort_order: InvLines.filter(l => l.invoice_id === invId).length
+  };
+  const { error } = await sb.from('invoice_lines').insert(row);
+  if (error) { alert('Could not add: ' + error.message); return; }
+  await recalcInvoice(invId);
+  closeOv('ov-gen'); await loadInvoiceData(); renderInvoices(); openInvoice(invId);
+}
+
+async function deleteInvoiceLine(lineId, invId){
+  if (!confirm('Remove this line?')) return;
+  await sb.from('invoice_lines').delete().eq('id', lineId);
+  await recalcInvoice(invId);
+  await loadInvoiceData(); openInvoice(invId);
+}
+
+async function recalcInvoice(invId){
+  const { data } = await sb.from('invoice_lines').select('amount').eq('invoice_id', invId);
+  const sub = (data || []).reduce((a,l) => a + (+l.amount || 0), 0);
+  await sb.from('invoices').update({subtotal: sub, total: sub, updated_at: new Date().toISOString()}).eq('id', invId);
+}
+
+// ---------- the printable document ----------
+function invoiceHTML(id, asReceipt){
+  const inv = Invoices.find(i => i.id === id); if (!inv) return '';
+  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b) => a.sort_order - b.sort_order);
+  const pays = Payments.filter(p => p.invoice_id === id);
+  const paid = pays.reduce((a,p) => a + (+p.amount || 0), 0);
+  const cust = Custs.find(c => c.id === inv.customer_id) || {};
+  const accent = Settings.invoice_accent || '#c4441e';
+  const logo = window.__PAM_LOGO_URL || '';
+
+  return `<div style="font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:36px;color:#1b1813;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${accent};padding-bottom:16px;margin-bottom:22px">
+      <div>${logo ? `<img src="${logo}" style="max-height:64px;margin-bottom:8px;display:block">` : ''}
+        <div style="font-size:26px;font-weight:700;color:${accent};letter-spacing:-.5px">${esc(Settings.company_name || 'Penn Access & Mobility')}</div>
+        <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">${esc(Settings.legal_name||'')}<br>${esc(Settings.address||'')}<br>${esc(Settings.phone||'')} &middot; PA License #${esc(Settings.license_no||'')}</div></div>
+      <div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:2px;color:#333">${asReceipt ? 'RECEIPT' : 'INVOICE'}</div>
+        <div style="font-size:13px;margin-top:6px">${esc(inv.invoice_no||'')}</div>
+        <div style="font-size:12px;color:#666">Date: ${inv.issue_date||''}</div>
+        ${!asReceipt ? `<div style="font-size:12px;color:#666">Due: ${inv.due_date||''}</div>` : ''}
+        ${inv.period_label ? `<div style="font-size:12px;color:#666">Period: ${esc(inv.period_label)}</div>` : ''}</div>
+    </div>
+    <div style="margin-bottom:20px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Bill to</div>
+      <div style="font-size:14px;font-weight:600">${esc(inv.customer_name||'')}</div>
+      <div style="font-size:12px;color:#555;line-height:1.5">${esc(cust.address||'')}${cust.phone?'<br>'+esc(cust.phone):''}${cust.email?'<br>'+esc(cust.email):''}</div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+      <thead><tr style="background:#f4f0e7">
+        <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Description</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Qty</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Rate</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Amount</th></tr></thead>
+      <tbody>${lines.map(l => `<tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(l.description||'')}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">${(+l.qty||0).toFixed(2)} ${esc(l.unit_label||l.unit||'')}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.rate||0).toFixed(2)}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.amount||0).toFixed(2)}</td></tr>`).join('')
+        || '<tr><td colspan="4" style="padding:14px;color:#999">No line items yet</td></tr>'}</tbody></table>
+    <div style="margin-left:auto;width:280px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Subtotal</span><span>$${(+inv.subtotal||0).toFixed(2)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid ${accent};font-weight:700;font-size:15px"><span>Total</span><span>$${(+inv.total||0).toFixed(2)}</span></div>
+      ${paid > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 0;color:#3c6b46"><span>Paid</span><span>-$${paid.toFixed(2)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #ddd;font-weight:700"><span>Balance</span><span>$${Math.max(0,(+inv.total||0)-paid).toFixed(2)}</span></div>` : ''}
+    </div>
+    ${asReceipt ? `<div style="margin-top:26px;padding:14px;background:#e4eee3;border-left:4px solid #3c6b46">
+      <div style="font-weight:700;color:#3c6b46;margin-bottom:6px">Payment received - thank you</div>
+      ${pays.map(p => `<div style="font-size:12px;color:#444">${p.paid_date} &middot; ${esc(p.method||'')} ${p.reference?'&middot; ref '+esc(p.reference):''} &middot; $${(+p.amount||0).toFixed(2)}</div>`).join('')}
+    </div>` : `<div style="margin-top:26px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px">
+      <b>Terms:</b> ${esc(inv.terms || Settings.invoice_terms || 'Net 30')}<br>${esc(Settings.invoice_footer||'')}
+      ${inv.notes ? '<br>'+esc(inv.notes) : ''}</div>`}
+  </div>`;
+}
+
+// resolve the logo once so the invoice can embed it
+async function cacheLogoUrl(){
+  if (Settings.company_logo_path) {
+    try { window.__PAM_LOGO_URL = await signPath(Settings.company_logo_path); } catch(e){}
+  }
+}
+
+function openInvoice(id){
+  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b)=>a.sort_order-b.sort_order);
+  $('inv-body').innerHTML = invoiceHTML(id, false) +
+    `<div style="max-width:760px;margin:14px auto 0;padding:0 36px">
+      <div class="panel"><div class="panel-h"><h3>Edit lines</h3>
+        <button class="btn btn-xs btn-primary" onclick="addInvoiceLine('${id}')">+ Add line</button></div>
+        <div class="panel-b">${lines.map(l => `<div class="lrow">
+          <div>${esc(l.description)} <span style="color:var(--muted);font-size:12px">${(+l.qty||0).toFixed(2)} ${esc(l.unit_label||l.unit||'')} @ $${(+l.rate||0).toFixed(2)}</span></div>
+          <div><b>$${(+l.amount||0).toFixed(2)}</b>
+            <button class="btn btn-xs" style="margin-left:8px" onclick="deleteInvoiceLine('${l.id}','${id}')">&times;</button></div>
+        </div>`).join('') || '<div style="color:var(--muted);font-size:13px">No lines yet. Add one above.</div>'}</div></div>
+    </div>`;
+  $('inv-view').dataset.id = id;
+  openOv('ov-invoice');
+}
+
 </script>
 
 
-</body></html>
+<div class="overlay" id="ov-gen"><div class="modal" style="max-width:620px"><div class="mhdr"><h3 id="gen-title">Edit</h3><button class="btn btn-xs" onclick="closeOv('ov-gen')">Close</button></div><div class="mbody" id="gen-body"></div></div></div></body></html>
