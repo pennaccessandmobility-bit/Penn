@@ -808,7 +808,7 @@ button{font-family:inherit;cursor:pointer}
         <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input id="cust-q" placeholder="Search name, phone, agency…" oninput="renderCustomers()"></div></div>
         <div id="cust-table"><div class="loading">Loading customers…</div></div>
       </div>
-    </div><div class="view" id="v-tools"></div><div class="view" id="v-compliance"></div><div class="view" id="v-settings"></div></div>
+    </div><div class="view" id="v-tools"></div><div class="view" id="v-compliance"></div><div class="view" id="v-settings"></div><div class="view" id="v-subpay"></div></div>
 </div>
 
 <!-- CUSTOMER DETAIL -->
@@ -952,6 +952,7 @@ const MODULES = [
   {key:'customers', label:'Customers',  ic:'\u260e'},
   {key:'tools',     label:'Tools',      ic:'\u2692'},
   {key:'compliance',label:'Compliance', ic:'\u26a0'},
+  {key:'subpay',    label:'Sub pay',    ic:'\u2696'},
   {key:'settings',  label:'Settings',   ic:'\u2699'},
 ];
 
@@ -981,6 +982,7 @@ function go(key){
     '1099':     () => render1099(),
     bidding:    () => renderDashboard(),
     settings:   () => renderSettings(),
+    subpay:     () => renderSubPayPage(),
   }[key];
   if (r) {
     try { r(); }
@@ -5184,6 +5186,181 @@ function openInvoice(id){
     </div>`;
   $('inv-view').dataset.id = id;
   openOv('ov-invoice');
+}
+
+
+
+// ============================================================================
+// SUB PAY STATEMENTS
+// Anyone whose time you track lives in Crew. Subs are just crew with
+// worker_type = subcontractor. Their cost rate is what YOU pay them.
+// A statement shows what you owe, prints as a record, and can be logged
+// as an expense so the 1099 total stays accurate without double entry.
+// ============================================================================
+let payFrom = null, payTo = null, payWho = '';
+
+function subsInCrew(){ return Crew.filter(c => c.worker_type === 'subcontractor' && c.active !== false); }
+
+function renderSubPay(){
+  const body = $('sub-body'); if (!body) return;
+  const subs = subsInCrew();
+  if (!payFrom) { payFrom = ymd(weekStart(0)); payTo = ymd(weekEnd(0)); }
+  const whoOpts = `<option value="">&mdash; pick a subcontractor &mdash;</option>` +
+    subs.map(c => `<option value="${c.id}" ${c.id===payWho?'selected':''}>${esc(c.name)}</option>`).join('');
+
+  const entries = payWho
+    ? TimeEntries.filter(t => t.crew_id === payWho && t.clock_out && t.work_date >= payFrom && t.work_date <= payTo)
+    : [];
+  const hours = entries.reduce((a,t) => a + (+t.hours||0), 0);
+  const owed  = entries.reduce((a,t) => a + (+t.cost_total||0), 0);
+  const miles = entries.reduce((a,t) => a + (+t.miles||0), 0);
+  const sub   = Crew.find(c => c.id === payWho);
+  const payee = Payees.find(p => p.crew_id === payWho) || Payees.find(p => sub && p.name === sub.name);
+
+  body.innerHTML = `
+    <div class="panel"><div class="panel-b">
+      <div class="fr"><div class="fg" style="flex:2"><label class="lbl">Subcontractor</label>
+        <select id="sp-who" onchange="payWho=this.value;renderSubPay()">${whoOpts}</select></div>
+        <div class="fg" style="flex:1"><label class="lbl">From</label><input type="date" id="sp-from" value="${payFrom}" onchange="payFrom=this.value;renderSubPay()"></div>
+        <div class="fg" style="flex:1"><label class="lbl">To</label><input type="date" id="sp-to" value="${payTo}" onchange="payTo=this.value;renderSubPay()"></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="payRange(0)">This week</button>
+        <button class="btn btn-sm" onclick="payRange(-1)">Last week</button>
+        <button class="btn btn-sm" onclick="payMonth()">This month</button>
+      </div>
+    </div></div>
+
+    ${!payWho ? `<div class="panel"><div class="panel-b" style="color:var(--muted);font-size:13px">
+      Pick a subcontractor above. ${subs.length ? '' : 'None marked yet. Open Settings, Crew, and set a worker type to 1099 subcontractor.'}
+    </div></div>` : `
+    <div class="kgrid">
+      <div class="kpi"><div class="k-label">Hours</div><div class="k-val">${hours.toFixed(2)}</div></div>
+      <div class="kpi"><div class="k-label">Miles</div><div class="k-val">${miles.toFixed(0)}</div></div>
+      <div class="kpi"><div class="k-label">Rate</div><div class="k-val">$${(+(sub&&sub.hourly_cost)||0).toFixed(2)}</div></div>
+      <div class="kpi"><div class="k-label">You owe</div><div class="k-val" style="color:var(--accent2)">$${owed.toFixed(2)}</div></div>
+    </div>
+
+    <div class="panel"><div class="panel-h"><h3>${esc(sub?sub.name:'')} &middot; ${payFrom} to ${payTo}</h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-xs" onclick="printSubStatement()">Print statement</button>
+        <button class="btn btn-xs btn-primary" onclick="logSubPayment()">Log as payment</button>
+      </div></div>
+      <div class="panel-b" style="padding:0">
+      <table class="tbl"><thead><tr><th>Date</th><th>Customer</th><th>Work</th>
+        <th style="text-align:right">Hrs</th><th style="text-align:right">Rate</th><th style="text-align:right">Owed</th></tr></thead>
+      <tbody>${entries.map(t => `<tr>
+        <td>${t.work_date||''}</td><td>${esc(t.customer_name||'&mdash;')}</td>
+        <td>${esc(t.work_type_name||'')}${t.notes?`<div style="font-size:11px;color:var(--muted)">${esc(t.notes)}</div>`:''}</td>
+        <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
+        <td style="text-align:right">$${(+t.cost_rate||0).toFixed(2)}</td>
+        <td style="text-align:right">$${(+t.cost_total||0).toFixed(2)}</td></tr>`).join('')
+        || '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No hours in this range</td></tr>'}
+      </tbody></table></div></div>
+
+    ${payee ? `<div class="panel"><div class="panel-b" style="font-size:13px">
+      1099 status: ${payee.w9_on_file ? '<span class="badge b-green">W-9 on file</span>' : '<span class="badge b-red">No W-9 yet</span>'}
+      ${payee.is_1099_eligible === false ? ' <span class="badge b-gray">Exempt</span>' : ''}
+    </div></div>` : `<div class="panel" style="border-color:var(--amber)"><div class="panel-b" style="font-size:13px">
+      <b>Not linked to a payee record.</b> Add them under Settings, Subcontractors so payments roll into their 1099.
+    </div></div>`}
+    `}`;
+}
+
+function payRange(off){ payFrom = ymd(weekStart(off)); payTo = ymd(weekEnd(off)); renderSubPay(); }
+function payMonth(){
+  const d = new Date();
+  payFrom = ymd(new Date(d.getFullYear(), d.getMonth(), 1));
+  payTo = ymd(new Date(d.getFullYear(), d.getMonth()+1, 0));
+  renderSubPay();
+}
+
+function subStatementHTML(){
+  const sub = Crew.find(c => c.id === payWho) || {};
+  const entries = TimeEntries.filter(t => t.crew_id === payWho && t.clock_out && t.work_date >= payFrom && t.work_date <= payTo);
+  const hours = entries.reduce((a,t) => a + (+t.hours||0), 0);
+  const owed  = entries.reduce((a,t) => a + (+t.cost_total||0), 0);
+  const accent = Settings.invoice_accent || '#c4441e';
+  return `<div style="font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:36px;color:#1b1813;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${accent};padding-bottom:16px;margin-bottom:22px">
+      <div><div style="font-size:24px;font-weight:700;color:${accent}">${esc(Settings.company_name||'Penn Access & Mobility')}</div>
+        <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">${esc(Settings.legal_name||'')}<br>${esc(Settings.address||'')}<br>${esc(Settings.phone||'')}</div></div>
+      <div style="text-align:right"><div style="font-size:20px;font-weight:700;letter-spacing:2px;color:#333">PAY STATEMENT</div>
+        <div style="font-size:12px;color:#666;margin-top:6px">${payFrom} to ${payTo}</div></div>
+    </div>
+    <div style="margin-bottom:18px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888">Paid to</div>
+      <div style="font-size:15px;font-weight:600">${esc(sub.name||'')}</div>
+      <div style="font-size:12px;color:#555">${esc(sub.phone||'')}${sub.email?' &middot; '+esc(sub.email):''}</div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+      <thead><tr style="background:#f4f0e7">
+        <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Date</th>
+        <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Job / customer</th>
+        <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Work</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Hours</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Rate</th>
+        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Amount</th></tr></thead>
+      <tbody>${entries.map(t => `<tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee">${t.work_date||''}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(t.customer_name||'-')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(t.work_type_name||'')}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">${(+t.hours||0).toFixed(2)}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+t.cost_rate||0).toFixed(2)}</td>
+        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+t.cost_total||0).toFixed(2)}</td></tr>`).join('')}
+      </tbody></table>
+    <div style="margin-left:auto;width:280px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Total hours</span><span>${hours.toFixed(2)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid ${accent};font-weight:700;font-size:16px"><span>Total due</span><span>$${owed.toFixed(2)}</span></div>
+    </div>
+    <div style="margin-top:30px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px">
+      This is a record of hours worked and amount owed for the period shown. Retain for your records.
+    </div></div>`;
+}
+
+function printSubStatement(){
+  if (!payWho) { alert('Pick a subcontractor first.'); return; }
+  const w = window.open('','_blank');
+  w.document.write('<html><head><title>Pay statement</title></head><'+'body>' + subStatementHTML() + '</'+'body></'+'html>');
+  w.document.close(); setTimeout(() => w.print(), 350);
+}
+
+async function logSubPayment(){
+  if (!payWho) { alert('Pick a subcontractor first.'); return; }
+  const sub = Crew.find(c => c.id === payWho) || {};
+  const entries = TimeEntries.filter(t => t.crew_id === payWho && t.clock_out && t.work_date >= payFrom && t.work_date <= payTo);
+  const owed = entries.reduce((a,t) => a + (+t.cost_total||0), 0);
+  if (owed <= 0) { alert('Nothing owed in this range.'); return; }
+  const amt = prompt(`Amount paid to ${sub.name}?`, owed.toFixed(2));
+  if (amt === null) return;
+  const method = prompt('Paid by (check / cash / ach):', 'check') || 'check';
+  const ref = prompt('Check number or reference (optional):', '') || null;
+  let payee = Payees.find(p => p.crew_id === payWho) || Payees.find(p => p.name === sub.name);
+  if (!payee) {
+    const { data } = await sb.from('payees').insert({
+      name: sub.name, crew_id: payWho, trade: sub.notes || null,
+      default_rate: +sub.hourly_cost || 0, is_1099_eligible: true
+    }).select();
+    payee = data && data[0];
+    await loadPayees();
+  }
+  const { error } = await sb.from('expenses').insert({
+    vendor: sub.name, expense_date: ymd(new Date()), amount: +amt,
+    category: 'Subcontractor', is_material: false,
+    payee_id: payee ? payee.id : null, payee_name: sub.name,
+    counts_toward_1099: true, payment_method: method, reference: ref,
+    description: `Labor ${payFrom} to ${payTo}, ${entries.reduce((a,t)=>a+(+t.hours||0),0).toFixed(2)} hrs`
+  });
+  if (error) { alert('Could not log payment: ' + error.message); return; }
+  await loadExpenses(); await loadPayees();
+  alert('Payment logged. It now counts toward their 1099 and shows in Receipts.');
+  renderSubPay();
+}
+
+
+function renderSubPayPage(){
+  const el = $('v-subpay'); if(!el) return;
+  el.innerHTML = '<div class="wrap"><div class="page-head"><div><h1>Sub pay</h1>' +
+    '<div class="sub">What you owe subcontractors, and a printable record</div></div></div>' +
+    '<div id="sub-body"></div></div>';
+  renderSubPay();
 }
 
 </script>
