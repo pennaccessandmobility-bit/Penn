@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BOBS BURGERS</title>
+<title>Penn Access &amp; Mobility</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600;1,9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600;1,9..144,700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 <style>
 
 
@@ -565,12 +564,17 @@ button{font-family:inherit;cursor:pointer}
 
 <div id="suite">
   <header class="topbar">
-    <div class="tb-logo"><div class="script">BOBS</div><div class="sub">BURGERS</div></div>
+    <div class="tb-logo"><div class="script">Penn</div><div class="sub">Access &amp; Mobility</div></div>
     <nav class="tabs" id="tabs"></nav>
     <div class="tb-user"><span id="who"></span><button class="btn btn-xs" onclick="doLogout()">Sign out</button></div>
   </header>
   <div class="stage" id="stage">
-<div class="view active" id="v-dashboard">
+
+    <!-- CUSTOMERS -->
+    
+    
+    <!-- module frames injected here -->
+  <div class="view active" id="v-dashboard">
       <div class="wrap">
         <div class="page-head"><div><h1>Command center</h1><div class="sub" id="dash-date"></div></div>
           <button class="btn btn-primary" onclick="go('bidding')">+ Start a bid</button></div>
@@ -589,53 +593,7 @@ button{font-family:inherit;cursor:pointer}
           </div>
         </div>
       </div>
-    </div>
-    <!-- CUSTOMERS -->
-    <div class="view" id="v-jobs"></div>
-    <div class="view" id="v-customers">
-      <div class="wrap">
-        <div class="page-head"><div><h1>Customers</h1><div class="sub">Everyone who's reached out — leads, bids, and jobs in one place.</div></div>
-          <button class="btn btn-primary" onclick="openAddCustomer()">+ Add customer</button></div>
-        <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input id="cust-q" placeholder="Search name, phone, agency…" oninput="renderCustomers()"></div></div>
-        <div id="cust-table"><div class="loading">Loading customers…</div></div>
-      </div>
-    </div>
-    <!-- module frames injected here -->
-  </div>
-</div>
-
-<!-- CUSTOMER DETAIL -->
-<div class="ov" id="ov-cust"><div class="modal">
-  <div class="mhdr"><div style="flex:1"><h2 id="cd-name">Customer</h2><div class="sub" id="cd-sub"></div></div>
-    <button class="btn btn-ghost btn-sm" onclick="closeOv('ov-cust')">✕</button></div>
-  <div class="mbody" id="cd-body"></div>
-  <div class="mfoot"><button class="btn" onclick="newBidFor()">+ New bid for this customer</button><button class="btn btn-primary" onclick="closeOv('ov-cust')">Done</button></div>
-</div></div>
-
-<!-- ADD CUSTOMER -->
-<div class="ov" id="ov-add"><div class="modal" style="max-width:540px">
-  <div class="mhdr"><div style="flex:1"><h2>Add customer</h2><div class="sub">Drop in a new lead the moment they call.</div></div>
-    <button class="btn btn-ghost btn-sm" onclick="closeOv('ov-add')">✕</button></div>
-  <div class="mbody">
-    <div class="err" id="add-err"></div>
-    <div class="fld"><label class="lbl">Name *</label><input id="a-name"></div>
-    <div class="fr"><div class="fld"><label class="lbl">Phone</label><input id="a-phone"></div><div class="fld"><label class="lbl">Email</label><input id="a-email"></div></div>
-    <div class="fld"><label class="lbl">Address</label><input id="a-addr"></div>
-    <div class="fr"><div class="fld"><label class="lbl">Type</label><select id="a-cat"><option>Private</option><option>Agency</option></select></div>
-      <div class="fld"><label class="lbl">Agency (if any)</label><input id="a-agency"></div></div>
-    <div class="fld"><label class="lbl">Notes</label><textarea id="a-notes" style="min-height:64px"></textarea></div>
-  </div>
-  <div class="mfoot"><button class="btn" onclick="closeOv('ov-add')">Cancel</button><button class="btn btn-primary" onclick="saveCustomer()">Save customer</button></div>
-</div>
-    <div class="view" id="v-time"></div>
-    <div class="view" id="v-invoices"></div>
-    <div class="view" id="v-permits"></div>
-    <div class="view" id="v-1099"></div>
-    <div class="view" id="v-receipts"></div>
-    <div class="view" id="v-money"></div>
-    <div class="view" id="v-tools"></div>
-    <div class="view" id="v-compliance"></div>
-    <div class="view" id="v-bidding"><div class="wrap" style="padding-top:0">
+    </div><div class="view" id="v-jobs"></div><div class="view" id="v-time"></div><div class="view" id="v-bidding"><div class="wrap" style="padding-top:0">
 <div id="app-wrap">
   <div class="bb-subnav">
       <div class="hn active" onclick="navTo('dashboard',this)">Bid dashboard</div>
@@ -671,9 +629,9 @@ button{font-family:inherit;cursor:pointer}
       <div class="set-layout">
         <div class="set-nav">
           <div class="set-nav-section">Price list</div>
-          <div class="sni active" onclick="setTab('pl',this)">📦 Materials & labor</div>
+          <div class="sni active" onclick="setTab('pl',this)">📦 Materials &amp; labor</div>
           <div class="set-nav-section">Labor</div>
-          <div class="sni" onclick="setTab('cr',this)">👷 Crew & rates</div>
+          <div class="sni" onclick="setTab('cr',this)">👷 Crew &amp; rates</div>
           <div class="set-nav-section">Overhead</div>
           <div class="sni" onclick="setTab('oh',this)">🏢 Overhead fees</div>
           <div class="sni" onclick="setTab('ohc',this)">🧮 Overhead calculator</div>
@@ -766,7 +724,7 @@ button{font-family:inherit;cursor:pointer}
 </div>
 
 <datalist id="units-list"></datalist>
-<datalist id="area-list"><option value="Bathroom"><option value="Kitchen"><option value="Fire Safety"><option value="Bedroom"><option value="Living Room"><option value="Exterior"><option value="Accessibility"><option value="Whole Home"></datalist>
+<datalist id="area-list"><option value="Bathroom"></option><option value="Kitchen"></option><option value="Fire Safety"></option><option value="Bedroom"></option><option value="Living Room"></option><option value="Exterior"></option><option value="Accessibility"></option><option value="Whole Home"></option></datalist>
 
 <div class="overlay" id="ov-cancel-job">
   <div class="modal">
@@ -843,12 +801,53 @@ button{font-family:inherit;cursor:pointer}
 
 
     </div>
+  </div><div class="view" id="v-invoices"></div><div class="view" id="v-receipts"></div><div class="view" id="v-money"></div><div class="view" id="v-permits"></div><div class="view" id="v-1099"></div><div class="view" id="v-customers">
+      <div class="wrap">
+        <div class="page-head"><div><h1>Customers</h1><div class="sub">Everyone who's reached out — leads, bids, and jobs in one place.</div></div>
+          <button class="btn btn-primary" onclick="openAddCustomer()">+ Add customer</button></div>
+        <div class="toolbar"><div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg><input id="cust-q" placeholder="Search name, phone, agency…" oninput="renderCustomers()"></div></div>
+        <div id="cust-table"><div class="loading">Loading customers…</div></div>
+      </div>
+    </div><div class="view" id="v-tools"></div><div class="view" id="v-compliance"></div></div>
+</div>
+
+<!-- CUSTOMER DETAIL -->
+<div class="ov" id="ov-cust"><div class="modal">
+  <div class="mhdr"><div style="flex:1"><h2 id="cd-name">Customer</h2><div class="sub" id="cd-sub"></div></div>
+    <button class="btn btn-ghost btn-sm" onclick="closeOv('ov-cust')">✕</button></div>
+  <div class="mbody" id="cd-body"></div>
+  <div class="mfoot"><button class="btn" onclick="newBidFor()">+ New bid for this customer</button><button class="btn btn-primary" onclick="closeOv('ov-cust')">Done</button></div>
+</div></div>
+
+<!-- ADD CUSTOMER -->
+<div class="ov" id="ov-add"><div class="modal" style="max-width:540px">
+  <div class="mhdr"><div style="flex:1"><h2>Add customer</h2><div class="sub">Drop in a new lead the moment they call.</div></div>
+    <button class="btn btn-ghost btn-sm" onclick="closeOv('ov-add')">✕</button></div>
+  <div class="mbody">
+    <div class="err" id="add-err"></div>
+    <div class="fld"><label class="lbl">Name *</label><input id="a-name"></div>
+    <div class="fr"><div class="fld"><label class="lbl">Phone</label><input id="a-phone"></div><div class="fld"><label class="lbl">Email</label><input id="a-email"></div></div>
+    <div class="fld"><label class="lbl">Address</label><input id="a-addr"></div>
+    <div class="fr"><div class="fld"><label class="lbl">Type</label><select id="a-cat"><option>Private</option><option>Agency</option></select></div>
+      <div class="fld"><label class="lbl">Agency (if any)</label><input id="a-agency"></div></div>
+    <div class="fld"><label class="lbl">Notes</label><textarea id="a-notes" style="min-height:64px"></textarea></div>
   </div>
+  <div class="mfoot"><button class="btn" onclick="closeOv('ov-add')">Cancel</button><button class="btn btn-primary" onclick="saveCustomer()">Save customer</button></div>
+</div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
 </div>
 
 
-  </div>
-</div>
+  
+
 
 <div class="overlay" id="ov-permit"><div class="modal" style="max-width:660px">
   <div class="mhdr"><h3>Permit</h3><button class="btn btn-xs" onclick="closeOv('ov-permit')">Close</button></div>
@@ -4474,5 +4473,6 @@ async function deletePayee(id){
 }
 
 </script>
-</body>
-</html>
+
+
+</body></html>
