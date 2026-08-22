@@ -4162,7 +4162,7 @@ async function deletePayee(id){
 // Company info, logo, invoice branding, crew, subcontractors, work types,
 // and rate cards (what each customer pays you, by tier).
 // ============================================================================
-let RateCards = [], RateLines = [], setPane = 'company';
+let RateCards = [], RateLines = [], setPane = 'contacts';
 
 async function loadSettingsData(){
   const [rc, rl, wt] = await Promise.all([
@@ -4188,6 +4188,7 @@ function setSetTab(t){ setPane = t; renderSettings(); }
 function renderSettings(){
   const el = $('v-settings'); if (!el) return;
   const tabs = [
+    ['contacts', 'Who you work for'],
     ['company',  'Company'],
     ['invoice',  'Invoice look'],
     ['crew',     'Crew'],
@@ -4201,7 +4202,7 @@ function renderSettings(){
       ${tabs.map(([k,l]) => `<button class="btn btn-sm ${setPane===k?'btn-primary':''}" onclick="setSetTab('${k}')">${l}</button>`).join('')}
     </div>
     <div id="set-body"></div></div>`;
-  ({company:setCompany, invoice:setInvoice, crew:setCrew, subs:setSubs, rates:setRates, worktypes:setWorkTypes}[setPane] || setCompany)();
+  ({contacts:setContacts, company:setCompany, invoice:setInvoice, crew:setCrew, subs:setSubs, rates:setRates, worktypes:setWorkTypes}[setPane] || setContacts)();
 }
 
 // ---------- Company ----------
@@ -4413,46 +4414,7 @@ async function removeWorkType(id){
 // ---------- Rate cards ----------
 function cardLines(cardId){ return RateLines.filter(l => l.rate_card_id === cardId).sort((a,b) => a.sort_order - b.sort_order); }
 
-function setRates(){
-  const byCust = {};
-  RateCards.forEach(c => { (byCust[c.customer_id] = byCust[c.customer_id] || []).push(c); });
 
-  const blocks = Object.entries(byCust).map(([cid, cards]) => {
-    const cust = Custs.find(c => c.id === cid);
-    return `<div class="panel">
-      <div class="panel-h"><h3>${esc(cust ? cust.name : 'Unknown customer')}</h3>
-        <button class="btn btn-xs" onclick="editRateCard('','${cid}')">+ Add tier</button></div>
-      <div class="panel-b">
-      ${cards.map(card => {
-        const lines = cardLines(card.id);
-        return `<div style="border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div><b>${esc(card.tier_name)}</b> ${card.is_default ? '<span class="badge b-accent">Default</span>' : ''}
-              ${card.notes ? `<div style="font-size:11.5px;color:var(--muted)">${esc(card.notes)}</div>` : ''}</div>
-            <div><button class="btn btn-xs" onclick="editRateCard('${card.id}','${cid}')">Edit tier</button>
-              <button class="btn btn-xs btn-primary" onclick="addRateLine('${card.id}')">+ Rate</button></div>
-          </div>
-          ${lines.length ? `<table class="tbl"><tbody>${lines.map(l => `<tr>
-            <td>${esc(l.label)}</td>
-            <td style="text-align:right"><b>$${(+l.rate||0).toFixed(2)}</b> <span style="color:var(--muted)">/ ${esc(l.unit)}</span></td>
-            <td style="text-align:right;width:120px"><button class="btn btn-xs" onclick="editRateLine('${l.id}')">Edit</button>
-              <button class="btn btn-xs" onclick="deleteRateLine('${l.id}')">&times;</button></td></tr>`).join('')}</tbody></table>`
-            : '<div style="font-size:12.5px;color:var(--muted)">No rates on this tier yet.</div>'}
-        </div>`;
-      }).join('')}
-      </div></div>`;
-  }).join('');
-
-  const custOpts = Custs.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  $('set-body').innerHTML = `
-    <div class="panel"><div class="panel-b">
-      <div style="font-size:13px;margin-bottom:10px">A rate card is what one customer pays <b>you</b>. Most have a single tier called Standard. Add more tiers when the same customer pays different rates for different work, like a contractor with apartment properties.</div>
-      <div class="fr"><div class="fg" style="flex:2"><label class="lbl">Customer</label><select id="rc-newcust">${custOpts}</select></div>
-        <div class="fg" style="flex:1"><label class="lbl">Tier name</label><input id="rc-newtier" placeholder="Standard"></div>
-        <div class="fg" style="align-self:flex-end"><button class="btn btn-primary" onclick="quickAddCard()">Create rate card</button></div></div>
-    </div></div>
-    ${blocks || '<div class="panel"><div class="panel-b" style="color:var(--muted);font-size:13px">No rate cards yet. Create one above.</div></div>'}`;
-}
 
 async function quickAddCard(){
   const cid = $('rc-newcust').value;
@@ -4637,29 +4599,11 @@ function startTick(){
 
 
 
-async function clockOut(){
-  if (!activeEntry) return;
-  const miles = +(prompt('Miles driven for this job? (0 if none)', '0') || 0);
-  const out = new Date();
-  const hours = Math.round((out - new Date(activeEntry.clock_in))/36e5 * 100)/100;
-  const mrate = +activeEntry.mileage_rate || 0;
-  const { error } = await sb.from('time_entries').update({
-    clock_out: out.toISOString(), hours,
-    cost_total: Math.round(hours * (+activeEntry.cost_rate||0) * 100)/100,
-    bill_total: Math.round(hours * (+activeEntry.bill_rate||0) * 100)/100,
-    miles, mileage_total: Math.round(miles * mrate * 100)/100
-  }).eq('id', activeEntry.id);
-  if (error) { alert('Could not clock out: ' + error.message); return; }
-  clearInterval(tickTimer); await loadTimeData(); renderTime();
-}
 
 
 
-async function deleteTimeEntry(id){
-  if (!confirm('Delete this time entry?')) return;
-  await sb.from('time_entries').delete().eq('id', id);
-  await loadTimeData(); renderTime();
-}
+
+
 
 // ---------- Week view ----------
 function renderWeekView(){
@@ -4729,7 +4673,7 @@ function renderWeekView(){
         <td style="text-align:right">${(+t.miles||0)||'&mdash;'}</td>
         <td style="text-align:right">$${((+t.bill_total||0)+(+t.mileage_total||0)).toFixed(2)}</td>
         <td style="text-align:center">${t.billed?'<span class="badge b-green">Invoiced</span>':'<span class="badge b-gray">Open</span>'}</td>
-        <td style="text-align:right"><button class="btn btn-xs" onclick="deleteTimeEntry('${t.id}')">&times;</button></td>
+        <td style="text-align:right;white-space:nowrap"><button class="btn btn-xs" onclick="editTimeEntry('${t.id}')">Edit</button> <button class="btn btn-xs" onclick="deleteTimeEntry('${t.id}')">&times;</button></td>
       </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No entries this week</td></tr>'}
       </tbody></table>
     </div></div>`;
@@ -5075,6 +5019,7 @@ function renderClockView(){
       <div class="kpi"><div class="k-label">Billable</div><div class="k-val">$${bill.toFixed(0)}</div></div>
       <div class="kpi"><div class="k-label">Labor cost</div><div class="k-val">$${cost.toFixed(0)}</div></div>
     </div>
+    ${runawayBanner()}
     ${card}
     <div class="panel"><div class="panel-h"><h3>Add hours manually</h3></div><div class="panel-b">
       <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="mn-crew">${crewOpts}</select></div>
@@ -5533,6 +5478,356 @@ function invoiceHTML(id, asReceipt){
     </div>`:`<div style="margin-top:26px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px">
       <b>Terms:</b> ${esc(inv.terms||Settings.invoice_terms||'Net 30')}<br>${esc(Settings.invoice_footer||'')}</div>`}
   </div>`;
+}
+
+
+
+// ============================================================================
+// SETTINGS - CONTRACTORS, CUSTOMERS, AGENCIES
+// One list. A record can be a contractor, an agency, or a plain customer.
+// The type flags decide which dropdowns they appear in on the time clock.
+// From here you jump straight to their rate card.
+// ============================================================================
+let contactFilter = 'all';
+
+function whoType(c){
+  const t = [];
+  if (c.is_contractor || c.category === 'contractor') t.push('Contractor');
+  if (c.is_agency || c.category === 'agency') t.push('Agency');
+  if (!t.length) t.push('Customer');
+  return t;
+}
+
+function setContactFilter(f){ contactFilter = f; renderSettings(); }
+
+function setContacts(){
+  let list = Custs.slice();
+  if (contactFilter === 'contractor') list = list.filter(c => c.is_contractor || c.category === 'contractor');
+  if (contactFilter === 'agency')     list = list.filter(c => c.is_agency || c.category === 'agency');
+  if (contactFilter === 'customer')   list = list.filter(c => !(c.is_contractor||c.category==='contractor') && !(c.is_agency||c.category==='agency'));
+
+  const counts = {
+    all: Custs.length,
+    contractor: Custs.filter(c => c.is_contractor || c.category==='contractor').length,
+    agency: Custs.filter(c => c.is_agency || c.category==='agency').length,
+    customer: Custs.filter(c => !(c.is_contractor||c.category==='contractor') && !(c.is_agency||c.category==='agency')).length,
+  };
+
+  const rows = list.map(c => {
+    const cards = RateCards.filter(r => r.customer_id === c.id);
+    const lineCount = cards.reduce((a,r) => a + cardLines(r.id).length, 0);
+    return `<tr>
+      <td><b>${esc(c.name)}</b>${c.phone?`<div style="font-size:11.5px;color:var(--muted)">${esc(c.phone)}</div>`:''}</td>
+      <td>${whoType(c).map(t => `<span class="badge ${t==='Contractor'?'b-accent':t==='Agency'?'b-blue':'b-gray'}">${t}</span>`).join(' ')}</td>
+      <td style="text-align:center">${cards.length ? `${cards.length} tier${cards.length>1?'s':''}, ${lineCount} rate${lineCount===1?'':'s'}`
+        : '<span class="badge b-amber">No rates</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-xs btn-primary" onclick="jumpToRates('${c.id}')">Set rates</button>
+        <button class="btn btn-xs" onclick="editContact('${c.id}')">Edit</button></td></tr>`;
+  }).join('');
+
+  $('set-body').innerHTML = `
+    <div class="panel"><div class="panel-b" style="font-size:13px">
+      Everyone you work with lives in one list. Tick <b>Contractor</b> for someone who hires you and pays you.
+      Tick <b>Agency</b> for an organization the work is for. Leave both unticked for a regular customer.
+      A record can be both. The rate card is what they pay you.
+    </div></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm ${contactFilter==='all'?'btn-primary':''}" onclick="setContactFilter('all')">All (${counts.all})</button>
+      <button class="btn btn-sm ${contactFilter==='contractor'?'btn-primary':''}" onclick="setContactFilter('contractor')">Contractors (${counts.contractor})</button>
+      <button class="btn btn-sm ${contactFilter==='agency'?'btn-primary':''}" onclick="setContactFilter('agency')">Agencies (${counts.agency})</button>
+      <button class="btn btn-sm ${contactFilter==='customer'?'btn-primary':''}" onclick="setContactFilter('customer')">Customers (${counts.customer})</button>
+    </div>
+    <div class="panel"><div class="panel-h"><h3>Contractors, customers and agencies</h3>
+      <button class="btn btn-xs btn-primary" onclick="editContact('')">+ Add</button></div>
+      <div class="panel-b" style="padding:0">
+      <table class="tbl"><thead><tr><th>Name</th><th>Type</th><th style="text-align:center">Rates</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted)">Nobody here yet. Add your first contractor or customer.</td></tr>'}</tbody></table>
+    </div></div>`;
+}
+
+function editContact(id){
+  const c = Custs.find(x => x.id === id) || {state:'PA'};
+  $('gen-body').innerHTML = `
+    <input type="hidden" id="ct-id" value="${id||''}">
+    <div class="fg"><label class="lbl">Name</label><input id="ct-name" value="${esc(c.name||'')}" placeholder="P.A. Losch & Sons, Miller residence, Snyder County AAA"></div>
+    <div class="fg"><label class="lbl">They are</label>
+      <div style="display:flex;gap:16px;padding:4px 0">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+          <input type="checkbox" id="ct-con" style="width:auto" ${(c.is_contractor||c.category==='contractor')?'checked':''}> Contractor (pays me)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+          <input type="checkbox" id="ct-agy" style="width:auto" ${(c.is_agency||c.category==='agency')?'checked':''}> Agency</label>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted)">Leave both unticked for a regular customer.</div></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Contact name</label><input id="ct-contact" value="${esc(c.contact_name||'')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Phone</label><input id="ct-phone" value="${esc(c.phone||'')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Email</label><input id="ct-email" value="${esc(c.email||'')}"></div></div>
+    <div class="fg"><label class="lbl">Address</label><input id="ct-addr" value="${esc(c.address||'')}"></div>
+    <div class="fr"><div class="fg" style="flex:2"><label class="lbl">City</label><input id="ct-city" value="${esc(c.city||'')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">State</label><input id="ct-state" value="${esc(c.state||'PA')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">ZIP</label><input id="ct-zip" value="${esc(c.zip||'')}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Round trip mi</label><input type="number" id="ct-miles" value="${c.round_trip_miles||0}"></div></div>
+    <div class="fg"><label class="lbl">Notes</label><textarea id="ct-notes" rows="2">${esc(c.notes||'')}</textarea></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveContact()">Save</button>`;
+  $('gen-title').textContent = id ? 'Edit record' : 'Add contractor, customer or agency';
+  openOv('ov-gen');
+}
+
+async function saveContact(){
+  const id = $('ct-id').value;
+  const isCon = $('ct-con').checked, isAgy = $('ct-agy').checked;
+  const row = {
+    name: $('ct-name').value.trim(),
+    is_contractor: isCon, is_agency: isAgy,
+    category: isCon ? 'contractor' : isAgy ? 'agency' : 'residential',
+    contact_name: $('ct-contact').value || null,
+    phone: $('ct-phone').value || null,
+    email: $('ct-email').value || null,
+    address: $('ct-addr').value || null,
+    city: $('ct-city').value || null,
+    state: $('ct-state').value || null,
+    zip: $('ct-zip').value || null,
+    round_trip_miles: +$('ct-miles').value || 0,
+    notes: $('ct-notes').value || null,
+    updated_at: new Date().toISOString()
+  };
+  if (!row.name) { alert('Enter a name.'); return; }
+  const { data, error } = id
+    ? await sb.from('customers').update(row).eq('id', id).select()
+    : await sb.from('customers').insert(row).select();
+  if (error) { alert('Could not save: ' + error.message); return; }
+  closeOv('ov-gen');
+  const r = await sb.from('customers').select('*').order('name');
+  Custs = r.data || [];
+  // brand new record with no rate card yet: offer to set one now
+  const newId = id || (data && data[0] ? data[0].id : null);
+  if (!id && newId && confirm('Saved. Set up their rate card now?')) { jumpToRates(newId); return; }
+  renderSettings();
+}
+
+// jump to the rates pane, create a default tier if they have none
+async function jumpToRates(customerId){
+  const existing = RateCards.filter(c => c.customer_id === customerId);
+  if (!existing.length) {
+    await sb.from('rate_cards').insert({customer_id: customerId, tier_name: 'Standard', is_default: true});
+    await loadSettingsData();
+  }
+  setPane = 'rates';
+  rateFocus = customerId;
+  renderSettings();
+}
+
+
+let rateFocus = '';
+function setRateFocus(id){ rateFocus = id; renderSettings(); }
+
+function setRates(){
+  const withCards = [...new Set(RateCards.map(c => c.customer_id))];
+  if (!Custs.length) {
+    $('set-body').innerHTML = '<div class="panel"><div class="panel-b" style="font-size:13px">' +
+      '<b>No contractors or customers yet.</b><br><br>Open the <b>Who you work for</b> tab first and add one. ' +
+      'Rate cards attach to a contractor or customer, so there is nothing to attach one to yet.</div></div>';
+    return;
+  }
+  if (!rateFocus) rateFocus = withCards[0] || Custs[0].id;
+
+  const pickOpts = Custs.map(c => {
+    const n = RateCards.filter(r => r.customer_id === c.id).length;
+    const t = whoType(c)[0];
+    return '<option value="' + c.id + '" ' + (c.id===rateFocus?'selected':'') + '>' +
+      esc(c.name) + ' (' + t + ')' + (n?' - ' + n + ' tier' + (n>1?'s':''):' - no rates') + '</option>';
+  }).join('');
+
+  const cust = Custs.find(c => c.id === rateFocus) || {};
+  const cards = RateCards.filter(c => c.customer_id === rateFocus);
+
+  $('set-body').innerHTML =
+    '<div class="panel"><div class="panel-b">' +
+      '<div class="fg"><label class="lbl">Set rates for</label>' +
+      '<select onchange="setRateFocus(this.value)">' + pickOpts + '</select></div>' +
+      '<div style="font-size:12.5px;color:var(--muted)">A rate card is what <b>' + esc(cust.name||'') + '</b> pays you. ' +
+      'Add a tier for each different rate level, like Standard and Apartments.</div>' +
+    '</div></div>' +
+    '<div class="panel"><div class="panel-h"><h3>' + esc(cust.name||'') + '</h3>' +
+      '<button class="btn btn-xs btn-primary" onclick="editRateCard(\'\',\'' + rateFocus + '\')">+ Add tier</button></div>' +
+      '<div class="panel-b">' +
+      (cards.length ? cards.map(card => {
+        const lines = cardLines(card.id);
+        return '<div style="border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+            '<div><b>' + esc(card.tier_name) + '</b> ' + (card.is_default?'<span class="badge b-accent">Default</span>':'') +
+              (card.notes?'<div style="font-size:11.5px;color:var(--muted)">' + esc(card.notes) + '</div>':'') + '</div>' +
+            '<div><button class="btn btn-xs" onclick="editRateCard(\'' + card.id + '\',\'' + rateFocus + '\')">Edit tier</button> ' +
+              '<button class="btn btn-xs btn-primary" onclick="addRateLine(\'' + card.id + '\')">+ Rate</button></div>' +
+          '</div>' +
+          (lines.length ? '<table class="tbl"><tbody>' + lines.map(l =>
+            '<tr><td>' + esc(l.label) + '</td>' +
+            '<td style="text-align:right"><b>$' + (+l.rate||0).toFixed(2) + '</b> <span style="color:var(--muted)">/ ' + esc(l.unit) + '</span></td>' +
+            '<td style="text-align:right;width:120px"><button class="btn btn-xs" onclick="editRateLine(\'' + l.id + '\')">Edit</button> ' +
+              '<button class="btn btn-xs" onclick="deleteRateLine(\'' + l.id + '\')">&times;</button></td></tr>').join('') + '</tbody></table>'
+            : '<div style="font-size:12.5px;color:var(--muted)">No rates yet. Click + Rate and add one, for example Drive time $40 per hour.</div>') +
+        '</div>';
+      }).join('') : '<div style="color:var(--muted);font-size:13px">No tiers yet. Click + Add tier.</div>') +
+    '</div></div>';
+}
+
+
+
+// ============================================================================
+// EDIT AND REPAIR TIME ENTRIES
+// Forgot to clock out? Pushed the wrong button? Fix it here instead of
+// deleting and re-typing. Everything recalculates from the times you set.
+// ============================================================================
+const RUNAWAY_HOURS = 12;   // anything past this is almost certainly a forgotten clock out
+
+function hoursBetween(inISO, outISO){
+  if (!inISO || !outISO) return 0;
+  return Math.max(0, Math.round((new Date(outISO) - new Date(inISO)) / 36e5 * 100) / 100);
+}
+function timeOf(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function dateOf(iso){
+  if (!iso) return ymd(new Date());
+  const d = new Date(iso);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function editTimeEntry(id){
+  const t = TimeEntries.find(x => x.id === id);
+  if (!t) { alert('Entry not found.'); return; }
+  if (t.billed && !confirm('This entry is already on an invoice. Editing it will not change that invoice. Continue?')) return;
+
+  const none = `<option value="">&mdash; none &mdash;</option>`;
+  const crewOpts = Crew.map(c => `<option value="${c.id}" ${t.crew_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  const wtOpts = WorkTypes.map(w => `<option value="${w.id}" ${t.work_type_id===w.id?'selected':''}>${esc(w.name)}</option>`).join('');
+  const conOpts = none + Custs.map(c => `<option value="${c.id}" ${t.contractor_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  const custOpts = none + Custs.map(c => `<option value="${c.id}" ${t.customer_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('');
+  const running = t.clock_in && !t.clock_out;
+  const elapsed = running ? hoursBetween(t.clock_in, new Date().toISOString()) : 0;
+
+  $('gen-body').innerHTML = `
+    ${running ? `<div class="panel" style="border-color:var(--amber);margin-bottom:14px"><div class="panel-b" style="font-size:13px">
+      <b>This entry is still running.</b> It started ${dateOf(t.clock_in)} at ${timeOf(t.clock_in)} and has been going
+      ${elapsed.toFixed(1)} hours. Set the real clock out time below and save to close it properly.</div></div>` : ''}
+    <input type="hidden" id="et-id" value="${id}">
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="et-crew">${crewOpts}</select></div>
+      <div class="fg" style="flex:1"><label class="lbl">Work type</label><select id="et-wt">${wtOpts}</select></div></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Date</label><input type="date" id="et-date" value="${t.work_date || dateOf(t.clock_in)}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Clocked in</label><input type="time" id="et-in" value="${timeOf(t.clock_in) || '08:00'}" onchange="etCalc()"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Clocked out</label><input type="time" id="et-out" value="${timeOf(t.clock_out) || new Date().toTimeString().slice(0,5)}" onchange="etCalc()"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Break (min)</label><input type="number" id="et-break" value="0" onchange="etCalc()"></div></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Hours</label><input type="number" step="0.25" id="et-hours" value="${(+t.hours||0).toFixed(2)}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Miles</label><input type="number" step="1" id="et-miles" value="${+t.miles||0}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Bill rate $/hr</label><input type="number" step="0.01" id="et-bill" value="${+t.bill_rate||0}"></div>
+      <div class="fg" style="flex:1"><label class="lbl">Cost rate $/hr</label><input type="number" step="0.01" id="et-cost" value="${+t.cost_rate||0}"></div></div>
+    <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Contractor</label><select id="et-con">${conOpts}</select></div>
+      <div class="fg" style="flex:1"><label class="lbl">Customer</label><select id="et-cust">${custOpts}</select></div></div>
+    <div class="fg"><label class="lbl">Notes</label><input id="et-notes" value="${esc(t.notes||'')}"></div>
+    <div id="et-warn" style="font-size:12px;margin-bottom:10px"></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveTimeEntry()">Save changes</button>
+    <button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="deleteTimeEntry('${id}')">Delete this entry</button>`;
+  $('gen-title').textContent = running ? 'Fix a running entry' : 'Edit time entry';
+  openOv('ov-gen');
+  etCalc();
+}
+
+function etCalc(){
+  const i = $('et-in'), o = $('et-out'), br = $('et-break'), hb = $('et-hours'), warn = $('et-warn');
+  if (!i || !o || !hb) return;
+  const [ih,im] = (i.value||'0:0').split(':').map(Number);
+  const [oh,om] = (o.value||'0:0').split(':').map(Number);
+  let mins = (oh*60+om) - (ih*60+im);
+  if (mins < 0) mins += 24*60;
+  mins -= (+br.value || 0);
+  const hrs = Math.max(0, Math.round(mins/60*100)/100);
+  hb.value = hrs;
+  if (warn) warn.innerHTML = hrs > RUNAWAY_HOURS
+    ? `<span style="color:var(--amber)">That is ${hrs.toFixed(1)} hours. Double check the times before saving.</span>`
+    : '';
+}
+
+async function saveTimeEntry(){
+  const id = $('et-id').value;
+  const t = TimeEntries.find(x => x.id === id) || {};
+  const date = $('et-date').value;
+  const hours = +$('et-hours').value || 0;
+  const miles = +$('et-miles').value || 0;
+  const bill = +$('et-bill').value || 0;
+  const cost = +$('et-cost').value || 0;
+  const mrate = +t.mileage_rate || 0;
+  const con = $('et-con').value || null, cus = $('et-cust').value || null;
+  const wt = WorkTypes.find(w => w.id === $('et-wt').value) || {};
+  const crew = Crew.find(c => c.id === $('et-crew').value) || {};
+  const nm = x => x ? (Custs.find(c => c.id === x)||{}).name : null;
+  const payer = con || cus;
+
+  const row = {
+    crew_id: crew.id || null, crew_name: crew.name || null,
+    work_type_id: wt.id || null, work_type_name: wt.name || null,
+    contractor_id: con, contractor_name: nm(con),
+    customer_id: payer, customer_name: nm(payer),
+    work_date: date,
+    clock_in:  new Date(date + 'T' + ($('et-in').value  || '08:00') + ':00').toISOString(),
+    clock_out: new Date(date + 'T' + ($('et-out').value || '16:00') + ':00').toISOString(),
+    hours, miles,
+    bill_rate: bill, cost_rate: cost,
+    bill_total: Math.round(hours * bill * 100)/100,
+    cost_total: Math.round(hours * cost * 100)/100,
+    mileage_total: Math.round(miles * mrate * 100)/100,
+    notes: $('et-notes').value || null
+  };
+  const { error } = await sb.from('time_entries').update(row).eq('id', id);
+  if (error) { alert('Could not save: ' + error.message); return; }
+  closeOv('ov-gen');
+  await loadTimeData(); renderTime();
+}
+
+async function deleteTimeEntry(id){
+  const t = TimeEntries.find(x => x.id === id);
+  if (t && t.billed && !confirm('This entry is on an invoice. Delete anyway? The invoice will not change.')) return;
+  if (!confirm('Delete this time entry? This cannot be undone.')) return;
+  const { error } = await sb.from('time_entries').delete().eq('id', id);
+  if (error) { alert('Could not delete: ' + error.message); return; }
+  closeOv('ov-gen');
+  await loadTimeData(); renderTime();
+}
+
+// ---------- runaway protection on clock out ----------
+async function clockOut(){
+  if (!activeEntry) return;
+  const raw = hoursBetween(activeEntry.clock_in, new Date().toISOString());
+  if (raw > RUNAWAY_HOURS) {
+    const msg = `This timer has been running ${raw.toFixed(1)} hours since ${dateOf(activeEntry.clock_in)} at ${timeOf(activeEntry.clock_in)}.\n\n` +
+      `That looks like a forgotten clock out.\n\nOK to fix the times by hand, or Cancel to record all ${raw.toFixed(1)} hours as worked.`;
+    if (confirm(msg)) { editTimeEntry(activeEntry.id); return; }
+  }
+  const miles = +(prompt('Miles driven for this job? (0 if none)', '0') || 0);
+  const out = new Date();
+  const hours = hoursBetween(activeEntry.clock_in, out.toISOString());
+  const mrate = +activeEntry.mileage_rate || 0;
+  const { error } = await sb.from('time_entries').update({
+    clock_out: out.toISOString(), hours,
+    cost_total: Math.round(hours * (+activeEntry.cost_rate||0) * 100)/100,
+    bill_total: Math.round(hours * (+activeEntry.bill_rate||0) * 100)/100,
+    miles, mileage_total: Math.round(miles * mrate * 100)/100
+  }).eq('id', activeEntry.id);
+  if (error) { alert('Could not clock out: ' + error.message); return; }
+  clearInterval(tickTimer); await loadTimeData(); renderTime();
+}
+
+// warning banner on the clock card when a timer has run too long
+function runawayBanner(){
+  if (!activeEntry) return '';
+  const h = hoursBetween(activeEntry.clock_in, new Date().toISOString());
+  if (h <= RUNAWAY_HOURS) return '';
+  return `<div class="panel" style="border-color:var(--red);margin-bottom:12px"><div class="panel-b" style="font-size:13px">
+    <b style="color:var(--red)">This timer has been running ${h.toFixed(1)} hours.</b>
+    It started ${dateOf(activeEntry.clock_in)} at ${timeOf(activeEntry.clock_in)}. If you forgot to clock out,
+    <button class="btn btn-xs btn-primary" onclick="editTimeEntry('${activeEntry.id}')">fix the times</button>
+    instead of clocking out now.</div></div>`;
 }
 
 </script>
