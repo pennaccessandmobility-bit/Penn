@@ -878,6 +878,7 @@ button{font-family:inherit;cursor:pointer}
     <div style="display:flex;gap:6px">
       <button class="btn btn-xs" onclick="printInvoice(document.getElementById('inv-view').dataset.id)">Print</button>
       <button class="btn btn-xs" onclick="emailInvoice(document.getElementById('inv-view').dataset.id)">Email</button>
+      <button class="btn btn-xs" onclick="downloadInvoice(document.getElementById('inv-view').dataset.id)">Download</button>
       <button class="btn btn-xs" onclick="closeOv('ov-invoice')">Close</button>
     </div></div>
   <div class="mbody" id="inv-body"></div>
@@ -4191,6 +4192,7 @@ function renderSettings(){
     ['contacts', 'Who you work for'],
     ['company',  'Company'],
     ['invoice',  'Invoice look'],
+    ['template', 'Invoice template'],
     ['crew',     'Crew'],
     ['subs',     'Subcontractors'],
     ['rates',    'Rate cards'],
@@ -4202,7 +4204,7 @@ function renderSettings(){
       ${tabs.map(([k,l]) => `<button class="btn btn-sm ${setPane===k?'btn-primary':''}" onclick="setSetTab('${k}')">${l}</button>`).join('')}
     </div>
     <div id="set-body"></div></div>`;
-  ({contacts:setContacts, company:setCompany, invoice:setInvoice, crew:setCrew, subs:setSubs, rates:setRates, worktypes:setWorkTypes}[setPane] || setContacts)();
+  ({contacts:setContacts, company:setCompany, invoice:setInvoice, template:setTemplate, crew:setCrew, subs:setSubs, rates:setRates, worktypes:setWorkTypes}[setPane] || setContacts)();
 }
 
 // ---------- Company ----------
@@ -4750,21 +4752,7 @@ async function cacheLogoUrl(){
   }
 }
 
-function openInvoice(id){
-  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b)=>a.sort_order-b.sort_order);
-  $('inv-body').innerHTML = invoiceHTML(id, false) +
-    `<div style="max-width:760px;margin:14px auto 0;padding:0 36px">
-      <div class="panel"><div class="panel-h"><h3>Edit lines</h3>
-        <button class="btn btn-xs btn-primary" onclick="addInvoiceLine('${id}')">+ Add line</button></div>
-        <div class="panel-b">${lines.map(l => `<div class="lrow">
-          <div>${esc(l.description)} <span style="color:var(--muted);font-size:12px">${(+l.qty||0).toFixed(2)} ${esc(l.unit_label||l.unit||'')} @ $${(+l.rate||0).toFixed(2)}</span></div>
-          <div><b>$${(+l.amount||0).toFixed(2)}</b>
-            <button class="btn btn-xs" style="margin-left:8px" onclick="deleteInvoiceLine('${l.id}','${id}')">&times;</button></div>
-        </div>`).join('') || '<div style="color:var(--muted);font-size:13px">No lines yet. Add one above.</div>'}</div></div>
-    </div>`;
-  $('inv-view').dataset.id = id;
-  openOv('ov-invoice');
-}
+
 
 
 
@@ -5045,7 +5033,8 @@ function renderClockView(){
       <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Agency</label><select id="mn-agency">${agencyOpts}</select></div>
         <div class="fg" style="flex:2"><label class="lbl">Notes</label><input id="mn-notes"></div></div>
       <button class="btn" style="width:100%;justify-content:center" onclick="addManualTime()">Add entry</button>
-    </div></div>`;
+    </div></div>
+    ${timeLogPanel()}`;
   if (activeEntry) startTick(); else { tierOptions(); tierOptions('mn'); previewRate(); calcManualHours(); }
 }
 
@@ -5297,6 +5286,7 @@ function renderInvoices(){
         <button class="btn btn-xs" onclick="openInvoice('${inv.id}')">Open</button>
         <button class="btn btn-xs" onclick="printInvoice('${inv.id}')">Print</button>
         <button class="btn btn-xs" onclick="emailInvoice('${inv.id}')">Email</button>
+        <button class="btn btn-xs" onclick="downloadInvoice('${inv.id}')">Download</button>
         ${st!=='Paid'?`<button class="btn btn-xs btn-primary" onclick="recordPayment('${inv.id}')">Mark paid</button>`
                      :`<button class="btn btn-xs" onclick="printReceipt('${inv.id}')">Receipt</button>`}
       </td></tr>`;
@@ -5445,59 +5435,7 @@ async function createCustomInvoice(){
 }
 
 // ---------- printable document ----------
-function invoiceHTML(id, asReceipt){
-  const inv = Invoices.find(i => i.id === id); if (!inv) return '';
-  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b)=>a.sort_order-b.sort_order);
-  const pays = Payments.filter(p => p.invoice_id === id);
-  const paid = pays.reduce((a,p)=>a+(+p.amount||0),0);
-  const cust = Custs.find(c => c.id === (inv.bill_to_id || inv.customer_id)) || {};
-  const accent = Settings.invoice_accent || '#c4441e';
-  const logo = window.__PAM_LOGO_URL || '';
 
-  return `<div style="font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:36px;color:#1b1813;background:#fff">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${accent};padding-bottom:16px;margin-bottom:22px">
-      <div>${logo?`<img src="${logo}" style="max-height:64px;margin-bottom:8px;display:block">`:''}
-        <div style="font-size:26px;font-weight:700;color:${accent};letter-spacing:-.5px">${esc(Settings.company_name||'Penn Access & Mobility')}</div>
-        <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">${esc(Settings.legal_name||'')}<br>${esc(Settings.address||'')}<br>${esc(Settings.phone||'')} &middot; PA License #${esc(Settings.license_no||'')}</div></div>
-      <div style="text-align:right"><div style="font-size:22px;font-weight:700;letter-spacing:2px;color:#333">${asReceipt?'RECEIPT':'INVOICE'}</div>
-        <div style="font-size:13px;margin-top:6px">${esc(inv.invoice_no||'')}</div>
-        <div style="font-size:12px;color:#666">Date: ${inv.issue_date||''}</div>
-        ${!asReceipt?`<div style="font-size:12px;color:#666">Due: ${inv.due_date||''}</div>`:''}
-        ${inv.period_label?`<div style="font-size:12px;color:#666">Period: ${esc(inv.period_label)}</div>`:''}</div>
-    </div>
-    <div style="display:flex;gap:40px;margin-bottom:20px">
-      <div style="flex:1"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Bill to</div>
-        <div style="font-size:14px;font-weight:600">${esc(inv.customer_name||'')}</div>
-        <div style="font-size:12px;color:#555;line-height:1.5">${esc(cust.address||'')}${cust.phone?'<br>'+esc(cust.phone):''}${cust.email?'<br>'+esc(cust.email):''}</div></div>
-      ${(inv.job_title || inv.notes) ? `<div style="flex:1"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Job</div>
-        ${inv.job_title?`<div style="font-size:13px;font-weight:600">${esc(inv.job_title)}</div>`:''}
-        ${inv.notes?`<div style="font-size:12px;color:#555;line-height:1.5">${esc(inv.notes)}</div>`:''}</div>` : ''}
-    </div>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
-      <thead><tr style="background:#f4f0e7">
-        <th style="text-align:left;padding:9px 10px;border-bottom:1px solid #ddd">Description</th>
-        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Qty</th>
-        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Rate</th>
-        <th style="text-align:right;padding:9px 10px;border-bottom:1px solid #ddd">Amount</th></tr></thead>
-      <tbody>${lines.map(l=>`<tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee">${esc(l.description||'')}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">${(+l.qty||0).toFixed(2)} ${esc(l.unit_label||l.unit||'')}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.rate||0).toFixed(2)}</td>
-        <td style="text-align:right;padding:8px 10px;border-bottom:1px solid #eee">$${(+l.amount||0).toFixed(2)}</td></tr>`).join('')
-        || '<tr><td colspan="4" style="padding:14px;color:#999">No line items yet</td></tr>'}</tbody></table>
-    <div style="margin-left:auto;width:280px;font-size:13px">
-      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Subtotal</span><span>$${(+inv.subtotal||0).toFixed(2)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid ${accent};font-weight:700;font-size:15px"><span>Total</span><span>$${(+inv.total||0).toFixed(2)}</span></div>
-      ${paid>0?`<div style="display:flex;justify-content:space-between;padding:5px 0;color:#3c6b46"><span>Paid</span><span>-$${paid.toFixed(2)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #ddd;font-weight:700"><span>Balance</span><span>$${Math.max(0,(+inv.total||0)-paid).toFixed(2)}</span></div>`:''}
-    </div>
-    ${asReceipt?`<div style="margin-top:26px;padding:14px;background:#e4eee3;border-left:4px solid #3c6b46">
-      <div style="font-weight:700;color:#3c6b46;margin-bottom:6px">Payment received - thank you</div>
-      ${pays.map(p=>`<div style="font-size:12px;color:#444">${p.paid_date} &middot; ${esc(p.method||'')} ${p.reference?'&middot; ref '+esc(p.reference):''} &middot; $${(+p.amount||0).toFixed(2)}</div>`).join('')}
-    </div>`:`<div style="margin-top:26px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px">
-      <b>Terms:</b> ${esc(inv.terms||Settings.invoice_terms||'Net 30')}<br>${esc(Settings.invoice_footer||'')}</div>`}
-  </div>`;
-}
 
 
 
@@ -5928,6 +5866,335 @@ function siteMatchCustomer(text){
   if (!text) return null;
   const c = Custs.find(x => x.name.toLowerCase() === text.trim().toLowerCase());
   return c ? c.id : null;
+}
+
+
+// ============================================================================
+// INVOICE TEMPLATE ENGINE
+// You edit an HTML template in Settings. The app fills in the blanks from
+// the invoice, the customer, and the time logs behind it.
+//
+// Tokens:  {{company_name}} {{legal_name}} {{address}} {{phone}} {{license_no}}
+//          {{logo}} {{accent}} {{doc_type}}
+//          {{invoice_no}} {{issue_date}} {{due_date}} {{period}} {{terms}} {{footer}}
+//          {{bill_to_name}} {{bill_to_address}} {{bill_to_phone}} {{bill_to_email}}
+//          {{job_title}} {{notes}}
+//          {{subtotal}} {{total}} {{paid}} {{balance}} {{payments}}
+// Repeat block for line items:
+//          {{#lines}} ... {{description}} {{qty}} {{unit}} {{rate}} {{amount}} {{site}} ... {{/lines}}
+// ============================================================================
+
+const DEFAULT_INVOICE_TEMPLATE = `<div style="font-family:Georgia,serif;max-width:760px;margin:0 auto;padding:36px;color:#1b1813;background:#fff">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid {{accent}};padding-bottom:16px;margin-bottom:24px">
+    <div>
+      {{logo}}
+      <div style="font-size:26px;font-weight:700;color:{{accent}};letter-spacing:-.5px">{{company_name}}</div>
+      <div style="font-size:12px;color:#555;line-height:1.6;margin-top:4px">
+        {{legal_name}}<br>{{address}}<br>{{phone}} &middot; PA License #{{license_no}}
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:22px;font-weight:700;letter-spacing:2px;color:#333">{{doc_type}}</div>
+      <div style="font-size:13px;margin-top:6px">{{invoice_no}}</div>
+      <div style="font-size:12px;color:#666">Date: {{issue_date}}</div>
+      <div style="font-size:12px;color:#666">Due: {{due_date}}</div>
+      <div style="font-size:12px;color:#666">{{period}}</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:40px;margin-bottom:22px">
+    <div style="flex:1">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Bill to</div>
+      <div style="font-size:14px;font-weight:600">{{bill_to_name}}</div>
+      <div style="font-size:12px;color:#555;line-height:1.5">{{bill_to_address}}<br>{{bill_to_phone}}<br>{{bill_to_email}}</div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#888;margin-bottom:4px">Job</div>
+      <div style="font-size:13px;font-weight:600">{{job_title}}</div>
+      <div style="font-size:12px;color:#555;line-height:1.5">{{notes}}</div>
+    </div>
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+    <thead>
+      <tr style="background:#f4f0e7">
+        <th style="text-align:left;padding:10px;border-bottom:1px solid #ddd">Description</th>
+        <th style="text-align:right;padding:10px;border-bottom:1px solid #ddd">Qty</th>
+        <th style="text-align:right;padding:10px;border-bottom:1px solid #ddd">Rate</th>
+        <th style="text-align:right;padding:10px;border-bottom:1px solid #ddd">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#lines}}
+      <tr>
+        <td style="padding:9px 10px;border-bottom:1px solid #eee">{{description}}</td>
+        <td style="text-align:right;padding:9px 10px;border-bottom:1px solid #eee">{{qty}} {{unit}}</td>
+        <td style="text-align:right;padding:9px 10px;border-bottom:1px solid #eee">{{rate}}</td>
+        <td style="text-align:right;padding:9px 10px;border-bottom:1px solid #eee">{{amount}}</td>
+      </tr>
+      {{/lines}}
+    </tbody>
+  </table>
+
+  <div style="margin-left:auto;width:290px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;padding:5px 0"><span>Subtotal</span><span>{{subtotal}}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:9px 0;border-top:2px solid {{accent}};font-weight:700;font-size:16px"><span>Total</span><span>{{total}}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:5px 0;color:#3c6b46"><span>Paid</span><span>{{paid}}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid #ddd;font-weight:700"><span>Balance due</span><span>{{balance}}</span></div>
+  </div>
+
+  {{payments}}
+
+  <div style="margin-top:32px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:14px">
+    <b>Terms:</b> {{terms}}<br>{{footer}}
+  </div>
+</div>`;
+
+function invoiceTemplate(){
+  return Settings.invoice_template || DEFAULT_INVOICE_TEMPLATE;
+}
+
+function money(n){ return '$' + (+n || 0).toFixed(2); }
+
+function renderTemplate(tpl, data, lines){
+  // repeat block first
+  let out = tpl.replace(/\{\{#lines\}\}([\s\S]*?)\{\{\/lines\}\}/g, (m, block) =>
+    lines.map(l => block.replace(/\{\{(\w+)\}\}/g, (mm, k) => l[k] != null ? l[k] : '')).join('')
+  );
+  // then the simple tokens
+  out = out.replace(/\{\{(\w+)\}\}/g, (m, k) => data[k] != null ? data[k] : '');
+  return out;
+}
+
+function invoiceData(id, asReceipt){
+  const inv = Invoices.find(i => i.id === id) || {};
+  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b)=>a.sort_order-b.sort_order);
+  const pays = Payments.filter(p => p.invoice_id === id);
+  const paid = pays.reduce((a,p)=>a+(+p.amount||0),0);
+  const cust = Custs.find(c => c.id === (inv.bill_to_id || inv.customer_id)) || {};
+  const accent = Settings.invoice_accent || '#c4441e';
+  const logo = window.__PAM_LOGO_URL ? `<img src="${window.__PAM_LOGO_URL}" style="max-height:64px;margin-bottom:8px;display:block">` : '';
+
+  const paymentsBlock = pays.length ? `<div style="margin-top:26px;padding:14px;background:#e4eee3;border-left:4px solid #3c6b46">
+    <div style="font-weight:700;color:#3c6b46;margin-bottom:6px">Payment received - thank you</div>
+    ${pays.map(p => `<div style="font-size:12px;color:#444">${fmtDate(p.paid_date)} &middot; ${esc(p.method||'')}${p.reference?' &middot; ref '+esc(p.reference):''} &middot; ${money(p.amount)}</div>`).join('')}
+  </div>` : '';
+
+  return {
+    data: {
+      company_name: esc(Settings.company_name || 'Penn Access & Mobility'),
+      legal_name:   esc(Settings.legal_name || ''),
+      address:      esc(Settings.address || ''),
+      phone:        esc(Settings.phone || ''),
+      license_no:   esc(Settings.license_no || ''),
+      logo, accent,
+      doc_type:     asReceipt ? 'RECEIPT' : 'INVOICE',
+      invoice_no:   esc(inv.invoice_no || ''),
+      issue_date:   fmtDate(inv.issue_date),
+      due_date:     fmtDate(inv.due_date),
+      period:       inv.period_label ? 'Period: ' + esc(inv.period_label) : '',
+      terms:        esc(inv.terms || Settings.invoice_terms || 'Net 30'),
+      footer:       esc(Settings.invoice_footer || ''),
+      bill_to_name: esc(inv.customer_name || ''),
+      bill_to_address: esc(cust.address || ''),
+      bill_to_phone:   esc(cust.phone || ''),
+      bill_to_email:   esc(cust.email || ''),
+      job_title:    esc(inv.job_title || ''),
+      notes:        esc(inv.notes || ''),
+      subtotal:     money(inv.subtotal),
+      total:        money(inv.total),
+      paid:         money(paid),
+      balance:      money(Math.max(0, (+inv.total||0) - paid)),
+      payments:     asReceipt ? paymentsBlock : (paid > 0 ? paymentsBlock : ''),
+    },
+    lines: lines.map(l => ({
+      description: esc(l.description || ''),
+      site:        esc(l.site_label || ''),
+      qty:         (+l.qty||0).toFixed(2),
+      unit:        esc(l.unit_label || l.unit || ''),
+      rate:        money(l.rate),
+      amount:      money(l.amount),
+    }))
+  };
+}
+
+function invoiceHTML(id, asReceipt){
+  const { data, lines } = invoiceData(id, asReceipt);
+  return renderTemplate(invoiceTemplate(), data, lines);
+}
+
+// ---------- download as a standalone file ----------
+function downloadInvoice(id, asReceipt){
+  const inv = Invoices.find(i => i.id === id) || {};
+  const body = invoiceHTML(id, asReceipt);
+  const doc = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<title>' + (inv.invoice_no || 'Invoice') + '</title>' +
+    '<style>@media print{@page{margin:0.5in}}body{margin:0;background:#fff}</style>' +
+    '</head><' + 'body>' + body + '</' + 'body></' + 'html>';
+  const blob = new Blob([doc], {type:'text/html'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (inv.invoice_no || 'invoice') + (asReceipt ? '-receipt' : '') + '.html';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+// ---------- delete an invoice ----------
+async function deleteInvoice(id){
+  const inv = Invoices.find(i => i.id === id); if (!inv) return;
+  const paid = Payments.filter(p => p.invoice_id === id).reduce((a,p)=>a+(+p.amount||0),0);
+  let msg = 'Delete invoice ' + (inv.invoice_no||'') + ' for ' + (inv.customer_name||'') + '?\n\n' +
+            'Its line items will be removed and any hours on it go back to unbilled so you can invoice them again.';
+  if (paid > 0) msg += '\n\nWARNING: this invoice has ' + money(paid) + ' in recorded payments. Those records will be deleted too.';
+  if (!confirm(msg)) return;
+  await sb.from('time_entries').update({billed:false, invoice_id:null}).eq('invoice_id', id);
+  await sb.from('payments').delete().eq('invoice_id', id);
+  await sb.from('invoice_lines').delete().eq('invoice_id', id);
+  const { error } = await sb.from('invoices').delete().eq('id', id);
+  if (error) { alert('Could not delete: ' + error.message); return; }
+  closeOv('ov-invoice');
+  await loadTimeData(); await loadInvoiceData();
+  renderInvoices();
+}
+
+// ---------- invoice viewer with the new buttons ----------
+function openInvoice(id){
+  const lines = InvLines.filter(l => l.invoice_id === id).sort((a,b)=>a.sort_order-b.sort_order);
+  $('inv-body').innerHTML = invoiceHTML(id, false) +
+    `<div style="max-width:760px;margin:14px auto 0;padding:0 36px">
+      <div class="panel"><div class="panel-h"><h3>Edit lines</h3>
+        <button class="btn btn-xs btn-primary" onclick="addInvoiceLine('${id}')">+ Add line</button></div>
+        <div class="panel-b">${lines.map(l => `<div class="lrow">
+          <div>${esc(l.description)} <span style="color:var(--muted);font-size:12px">${(+l.qty||0).toFixed(2)} ${esc(l.unit_label||l.unit||'')} @ ${money(l.rate)}</span></div>
+          <div><b>${money(l.amount)}</b>
+            <button class="btn btn-xs" style="margin-left:8px" onclick="deleteInvoiceLine('${l.id}','${id}')">&times;</button></div>
+        </div>`).join('') || '<div style="color:var(--muted);font-size:13px">No lines yet. Add one above.</div>'}</div></div>
+      <div class="panel" style="border-color:var(--red)"><div class="panel-b" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="font-size:13px">Deleting returns its hours to unbilled.</div>
+        <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${id}')">Delete invoice</button></div></div>
+    </div>`;
+  $('inv-view').dataset.id = id;
+  openOv('ov-invoice');
+}
+
+// ============================================================================
+// TIME LOGS under the clock
+// ============================================================================
+function recentTimeLogs(n){
+  return TimeEntries.filter(t => t.clock_out)
+    .sort((a,b) => (b.work_date||'').localeCompare(a.work_date||'') || (b.clock_in||'').localeCompare(a.clock_in||''))
+    .slice(0, n || 15);
+}
+
+function timeLogPanel(){
+  const list = recentTimeLogs(15);
+  return `<div class="panel"><div class="panel-h"><h3>Recent time logs</h3>
+      <button class="btn btn-xs" onclick="setTimeView('week')">Week view</button></div>
+    <div class="panel-b" style="padding:0">
+    <table class="tbl"><thead><tr><th>When</th><th>Who</th><th>Billed to</th><th>Job</th>
+      <th style="text-align:right">Hrs</th><th style="text-align:right">Amount</th>
+      <th style="text-align:center">Status</th><th></th></tr></thead>
+    <tbody>${list.map(t => `<tr>
+      <td>${fmtDate(t.work_date)}<div style="font-size:11px;color:var(--muted)">${fmt12(t.clock_in)}${t.clock_out?' - '+fmt12(t.clock_out):''}</div></td>
+      <td>${esc(t.crew_name||'')}</td>
+      <td>${esc(t.contractor_name||t.customer_name||'&mdash;')}</td>
+      <td>${esc(t.site_label||'&mdash;')}</td>
+      <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
+      <td style="text-align:right">${money((+t.bill_total||0)+(+t.mileage_total||0))}</td>
+      <td style="text-align:center">${t.billed?'<span class="badge b-green">Invoiced</span>':'<span class="badge b-gray">Open</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-xs" onclick="editTimeEntry('${t.id}')">Edit</button>
+        <button class="btn btn-xs" onclick="deleteTimeEntry('${t.id}')">&times;</button></td>
+    </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Nothing logged yet</td></tr>'}
+    </tbody></table></div></div>`;
+}
+
+
+// ---------- invoice template editor ----------
+function setTemplate(){
+  const tokens = [
+    ['Company', ['company_name','legal_name','address','phone','license_no','logo','accent']],
+    ['Invoice', ['doc_type','invoice_no','issue_date','due_date','period','terms','footer']],
+    ['Bill to', ['bill_to_name','bill_to_address','bill_to_phone','bill_to_email','job_title','notes']],
+    ['Totals',  ['subtotal','total','paid','balance','payments']],
+  ];
+  $('set-body').innerHTML =
+    '<div class="panel"><div class="panel-b" style="font-size:13px">' +
+      'This is the HTML used for every invoice and receipt. Edit it however you like. ' +
+      'Anything in double braces is filled in from the invoice, the customer and the time logs behind it.' +
+    '</div></div>' +
+    '<div class="cols">' +
+      '<div><div class="panel"><div class="panel-h"><h3>Template</h3>' +
+        '<div style="display:flex;gap:6px">' +
+        '<button class="btn btn-xs" onclick="previewTemplate()">Preview</button>' +
+        '<button class="btn btn-xs btn-primary" onclick="saveTemplate()">Save</button>' +
+        '<button class="btn btn-xs" onclick="resetTemplate()">Reset</button></div></div>' +
+        '<div class="panel-b"><textarea id="tpl-src" rows="26" spellcheck="false" ' +
+        'style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5">' +
+        esc(invoiceTemplate()) + '</textarea></div></div></div>' +
+      '<div><div class="panel"><div class="panel-h"><h3>Tokens you can use</h3></div><div class="panel-b">' +
+        tokens.map(([group, list]) =>
+          '<div style="margin-bottom:12px"><div class="k-label">' + group + '</div>' +
+          list.map(t => '<code style="display:inline-block;font-size:11.5px;background:var(--surface2);padding:2px 7px;' +
+            'border-radius:5px;margin:2px 3px 2px 0;cursor:pointer" onclick="insertToken(\'' + t + '\')">{{' + t + '}}</code>').join('') +
+          '</div>').join('') +
+        '<div style="margin-bottom:6px"><div class="k-label">Line items</div>' +
+        '<div style="font-size:12px;color:var(--muted);line-height:1.6">Wrap a row in ' +
+        '<code>{{#lines}}</code> and <code>{{/lines}}</code> and it repeats once per line. ' +
+        'Inside it you can use <code>{{description}}</code> <code>{{qty}}</code> <code>{{unit}}</code> ' +
+        '<code>{{rate}}</code> <code>{{amount}}</code> <code>{{site}}</code>.</div></div>' +
+      '</div></div></div>' +
+    '</div>' +
+    '<div id="tpl-preview"></div>';
+}
+
+function insertToken(t){
+  const el = $('tpl-src'); if (!el) return;
+  const s = el.selectionStart || 0;
+  el.value = el.value.slice(0,s) + '{{' + t + '}}' + el.value.slice(el.selectionEnd || s);
+  el.focus(); el.selectionStart = el.selectionEnd = s + t.length + 4;
+}
+
+async function saveTemplate(){
+  await saveSetting('invoice_template', $('tpl-src').value);
+  alert('Template saved. Every invoice uses it from now on.');
+}
+
+async function resetTemplate(){
+  if (!confirm('Put the template back to the built in one? Your edits will be lost.')) return;
+  await saveSetting('invoice_template', '');
+  Settings.invoice_template = '';
+  renderSettings();
+}
+
+function previewTemplate(){
+  const sample = {
+    company_name: esc(Settings.company_name||'Penn Access & Mobility'),
+    legal_name: esc(Settings.legal_name||'P.A. Losch and Sons LLC'),
+    address: esc(Settings.address||'3366 Evendale Hill Road, Richfield, PA 17086'),
+    phone: esc(Settings.phone||'717-320-2829'),
+    license_no: esc(Settings.license_no||'PA054398'),
+    logo: window.__PAM_LOGO_URL ? '<img src="' + window.__PAM_LOGO_URL + '" style="max-height:64px;margin-bottom:8px;display:block">' : '',
+    accent: Settings.invoice_accent || '#c4441e',
+    doc_type: 'INVOICE', invoice_no: 'INV-2026-0007',
+    issue_date: fmtDate(new Date().toISOString().slice(0,10)),
+    due_date: fmtDate(new Date(Date.now()+30*864e5).toISOString().slice(0,10)),
+    period: 'Period: this week', terms: esc(Settings.invoice_terms||'Net 30'),
+    footer: esc(Settings.invoice_footer||''),
+    bill_to_name: 'P.A. Losch & Sons', bill_to_address: '3366 Evendale Hill Road',
+    bill_to_phone: '717-320-2829', bill_to_email: '',
+    job_title: 'Johnson bathroom, 214 Main St', notes: 'Work performed for Snyder County AAA',
+    subtotal: '$780.00', total: '$780.00', paid: '$0.00', balance: '$780.00', payments: ''
+  };
+  const lines = [
+    {description:'Carpentry - Johnson bathroom', site:'Johnson bathroom', qty:'8.00', unit:'hr', rate:'$65.00', amount:'$520.00'},
+    {description:'Carpentry - 214 Main St', site:'214 Main St', qty:'4.00', unit:'hr', rate:'$65.00', amount:'$260.00'},
+    {description:'Mileage', site:'', qty:'44.0', unit:'mi', rate:'$0.70', amount:'$30.80'},
+  ];
+  $('tpl-preview').innerHTML = '<div class="panel"><div class="panel-h"><h3>Preview with sample data</h3></div>' +
+    '<div class="panel-b" style="background:#fff;overflow:auto">' +
+    renderTemplate($('tpl-src').value, sample, lines) + '</div></div>';
 }
 </script>
 
