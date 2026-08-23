@@ -4666,7 +4666,7 @@ function renderWeekView(){
         <th style="text-align:right">Hrs</th><th style="text-align:right">Mi</th>
         <th style="text-align:right">Billable</th><th style="text-align:center">Status</th><th></th></tr></thead>
       <tbody>${list.map(t => `<tr>
-        <td>${t.work_date||''}</td><td>${esc(t.crew_name||'')}</td>
+        <td>${fmtDate(t.work_date)}<div style="font-size:11px;color:var(--muted)">${fmt12(t.clock_in)}${t.clock_out?' - '+fmt12(t.clock_out):''}</div></td><td>${esc(t.crew_name||'')}</td>
         <td>${esc(t.customer_name||'&mdash;')}${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
         <td>${esc(t.work_type_name||'')}${t.tier_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.tier_name)}</div>`:''}</td>
         <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
@@ -4823,7 +4823,7 @@ function renderSubPay(){
       <table class="tbl"><thead><tr><th>Date</th><th>Customer</th><th>Work</th>
         <th style="text-align:right">Hrs</th><th style="text-align:right">Rate</th><th style="text-align:right">Owed</th></tr></thead>
       <tbody>${entries.map(t => `<tr>
-        <td>${t.work_date||''}</td><td>${esc(t.customer_name||'&mdash;')}</td>
+        <td>${fmtDate(t.work_date)}</td><td>${esc(t.customer_name||'&mdash;')}</td>
         <td>${esc(t.work_type_name||'')}${t.notes?`<div style="font-size:11px;color:var(--muted)">${esc(t.notes)}</div>`:''}</td>
         <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
         <td style="text-align:right">$${(+t.cost_rate||0).toFixed(2)}</td>
@@ -5710,7 +5710,7 @@ function editTimeEntry(id){
 
   $('gen-body').innerHTML = `
     ${running ? `<div class="panel" style="border-color:var(--amber);margin-bottom:14px"><div class="panel-b" style="font-size:13px">
-      <b>This entry is still running.</b> It started ${dateOf(t.clock_in)} at ${timeOf(t.clock_in)} and has been going
+      <b>This entry is still running.</b> It started ${fmtDate(t.clock_in)} at ${fmt12(t.clock_in)} and has been going
       ${elapsed.toFixed(1)} hours. Set the real clock out time below and save to close it properly.</div></div>` : ''}
     <input type="hidden" id="et-id" value="${id}">
     <div class="fr"><div class="fg" style="flex:1"><label class="lbl">Who</label><select id="et-crew">${crewOpts}</select></div>
@@ -5800,7 +5800,7 @@ async function clockOut(){
   if (!activeEntry) return;
   const raw = hoursBetween(activeEntry.clock_in, new Date().toISOString());
   if (raw > RUNAWAY_HOURS) {
-    const msg = `This timer has been running ${raw.toFixed(1)} hours since ${dateOf(activeEntry.clock_in)} at ${timeOf(activeEntry.clock_in)}.\n\n` +
+    const msg = `This timer has been running ${raw.toFixed(1)} hours since ${fmtDate(activeEntry.clock_in)} at ${fmt12(activeEntry.clock_in)}.\n\n` +
       `That looks like a forgotten clock out.\n\nOK to fix the times by hand, or Cancel to record all ${raw.toFixed(1)} hours as worked.`;
     if (confirm(msg)) { editTimeEntry(activeEntry.id); return; }
   }
@@ -5825,11 +5825,34 @@ function runawayBanner(){
   if (h <= RUNAWAY_HOURS) return '';
   return `<div class="panel" style="border-color:var(--red);margin-bottom:12px"><div class="panel-b" style="font-size:13px">
     <b style="color:var(--red)">This timer has been running ${h.toFixed(1)} hours.</b>
-    It started ${dateOf(activeEntry.clock_in)} at ${timeOf(activeEntry.clock_in)}. If you forgot to clock out,
+    It started ${fmtDate(activeEntry.clock_in)} at ${fmt12(activeEntry.clock_in)}. If you forgot to clock out,
     <button class="btn btn-xs btn-primary" onclick="editTimeEntry('${activeEntry.id}')">fix the times</button>
     instead of clocking out now.</div></div>`;
 }
 
+
+// ---- 12 hour time display ----
+function fmt12(iso){
+  if (!iso) return '';
+  const d = new Date(iso);
+  let hr = d.getHours();
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  const ap = hr >= 12 ? 'PM' : 'AM';
+  hr = hr % 12; if (hr === 0) hr = 12;
+  return hr + ':' + mi + ' ' + ap;
+}
+function fmt12hm(hhmm){
+  if (!hhmm) return '';
+  const [H,M] = hhmm.split(':').map(Number);
+  const ap = H >= 12 ? 'PM' : 'AM';
+  let hr = H % 12; if (hr === 0) hr = 12;
+  return hr + ':' + String(M).padStart(2,'0') + ' ' + ap;
+}
+function fmtDate(d){
+  if (!d) return '';
+  const x = (typeof d === 'string' && d.length === 10) ? new Date(d + 'T12:00:00') : new Date(d);
+  return x.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
 </script>
 
 
