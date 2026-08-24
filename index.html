@@ -573,6 +573,15 @@ html,body{overflow-x:hidden}
   .wrap{padding:16px 12px 50px !important}
   .tb-user{font-size:11px}
 }
+
+@media(max-width:760px){
+  .panel-b{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl{min-width:600px}
+  .kgrid{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+  .page-head{flex-direction:column;align-items:flex-start}
+  .topbar{gap:8px}
+  .tb-user{width:100%;justify-content:flex-end}
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -1399,7 +1408,7 @@ async function moveJob(id, to, note){
     job_id: id, from_stage: j.stage, to_stage: to,
     changed_by: CU ? CU.email : null, note: note || null
   });
-  await loadJobs(); renderJobs(); renderJobAlert();
+  await loadJobs(); refreshView();
 }
 
 async function jobHistory(id){
@@ -3145,7 +3154,7 @@ async function recordPayment(id){
     amount:+amt, method, reference:ref, paid_date:new Date().toISOString().slice(0,10)});
   if(error){alert('Could not record payment: '+error.message);return;}
   await sb.from('invoices').update({amount_paid:paid+(+amt),status:'paid'}).eq('id',id);
-  await loadInvoiceData(); renderInvoices();
+  await loadInvoiceData(); refreshView();
   if(confirm('Payment recorded. Print the receipt now?'))printReceipt(id);
 }
 
@@ -3250,13 +3259,13 @@ async function saveExpense(){
   const {error}=id?await sb.from('expenses').update(row).eq('id',id)
                   :await sb.from('expenses').insert(row);
   if(error){alert('Could not save: '+error.message+'\n\nDid you run expenses_setup.sql?');return;}
-  closeOv('ov-exp'); await loadExpenses(); renderReceipts();
+  closeOv('ov-exp'); await loadExpenses(); refreshView();
 }
 
 async function deleteExpense(id){
   if(!confirm('Delete this receipt?'))return;
   await sb.from('expenses').delete().eq('id',id);
-  await loadExpenses(); renderReceipts();
+  await loadExpenses(); refreshView();
 }
 
 
@@ -3529,7 +3538,7 @@ async function saveTool(){
   const {error}=id?await sb.from('tools_equipment').update(row).eq('id',id)
                   :await sb.from('tools_equipment').insert(row);
   if(error){alert('Could not save: '+error.message+'\n\nDid you run tools_setup.sql?');return;}
-  closeOv('ov-tool'); toolFilter=row.status; await loadTools(); renderTools();
+  closeOv('ov-tool'); toolFilter=row.status; await loadTools(); refreshView();
 }
 
 async function toolBought(id){
@@ -3537,7 +3546,7 @@ async function toolBought(id){
   const paid=prompt('What did you pay for it?', (t.est_price||0).toFixed(2)); if(paid===null)return;
   await sb.from('tools_equipment').update({status:'owned',purchase_price:+paid,
     purchase_date:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString()}).eq('id',id);
-  toolFilter='owned'; await loadTools(); renderTools();
+  toolFilter='owned'; await loadTools(); refreshView();
 }
 
 async function toolReplace(id){
@@ -3549,13 +3558,13 @@ async function toolReplace(id){
     make_model:t.make_model,qty:t.qty,est_price:t.purchase_price||0,vendor:t.vendor,buy_link:t.buy_link,
     priority:1,notes:'Replacement for unit retired '+new Date().toISOString().slice(0,10)}).select();
   if(data&&data[0])await sb.from('tools_equipment').update({replaced_by_id:data[0].id}).eq('id',id);
-  toolFilter='need'; await loadTools(); renderTools();
+  toolFilter='need'; await loadTools(); refreshView();
 }
 
 async function deleteTool(id){
   if(!confirm('Delete this item?'))return;
   await sb.from('tools_equipment').delete().eq('id',id);
-  await loadTools(); renderTools();
+  await loadTools(); refreshView();
 }
 
 
@@ -3712,7 +3721,7 @@ async function saveComp(){
   const {error}=id?await sb.from('compliance_items').update(row).eq('id',id)
                   :await sb.from('compliance_items').insert(row);
   if(error){alert('Could not save: '+error.message+'\n\nDid you run compliance_setup.sql?');return;}
-  closeOv('ov-comp'); await loadCompliance(); renderCompliance(); renderComplianceAlert();
+  closeOv('ov-comp'); await loadCompliance(); refreshView();
 }
 
 async function renewComp(id){
@@ -3730,13 +3739,13 @@ async function renewComp(id){
   await sb.from('compliance_items').update({expiration_date:nd,
     last_renewed:new Date().toISOString().slice(0,10),status:'active',
     updated_at:new Date().toISOString()}).eq('id',id);
-  await loadCompliance(); renderCompliance(); renderComplianceAlert();
+  await loadCompliance(); refreshView();
 }
 
 async function deleteComp(id){
   if(!confirm('Delete this item?'))return;
   await sb.from('compliance_items').delete().eq('id',id);
-  await loadCompliance(); renderCompliance(); renderComplianceAlert();
+  await loadCompliance(); refreshView();
 }
 
 
@@ -3886,13 +3895,13 @@ async function savePermit(){
   const {error}=id?await sb.from('permits').update(row).eq('id',id)
                   :await sb.from('permits').insert(row);
   if(error){alert('Could not save: '+error.message+'\n\nDid you run permits_setup.sql?');return;}
-  closeOv('ov-permit'); await loadPermits(); renderPermits(); renderPermitAlert();
+  closeOv('ov-permit'); await loadPermits(); refreshView();
 }
 
 async function deletePermit(id){
   if(!confirm('Delete this permit record?'))return;
   await sb.from('permits').delete().eq('id',id);
-  await loadPermits(); renderPermits(); renderPermitAlert();
+  await loadPermits(); refreshView();
 }
 
 
@@ -4039,13 +4048,13 @@ async function savePayee(){
   const {error}=id?await sb.from('payees').update(row).eq('id',id)
                   :await sb.from('payees').insert(row);
   if(error){alert('Could not save: '+error.message+'\n\nDid you run payees_1099_setup.sql?');return;}
-  closeOv('ov-payee'); await loadPayees(); render1099();
+  closeOv('ov-payee'); await loadPayees(); refreshView();
 }
 
 async function deletePayee(id){
   if(!confirm('Delete this payee? Their receipts stay but will no longer roll up.'))return;
   await sb.from('payees').delete().eq('id',id);
-  await loadPayees(); render1099();
+  await loadPayees(); refreshView();
 }
 
 
@@ -4550,7 +4559,7 @@ function renderWeekView(){
         <th style="text-align:right">Billable</th><th style="text-align:center">Status</th><th></th></tr></thead>
       <tbody>${list.map(t => `<tr>
         <td>${fmtDate(t.work_date)}<div style="font-size:11px;color:var(--muted)">${fmt12(t.clock_in)}${t.clock_out?' - '+fmt12(t.clock_out):''}</div></td><td>${esc(t.crew_name||'')}</td>
-        <td>${esc(t.contractor_name||t.customer_name||'&mdash;')}${t.site_label?`<div style="font-size:11px;color:var(--muted)">${esc(t.site_label)}</div>`:''}${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
+        <td>${(esc(t.contractor_name||t.customer_name)||'&mdash;')}${t.site_label?`<div style="font-size:11px;color:var(--muted)">${esc(t.site_label)}</div>`:''}${t.customer_name && t.customer_name!==t.contractor_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.customer_name)}</div>`:''}${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
         <td>${esc(t.work_type_name||'')}${t.tier_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.tier_name)}</div>`:''}</td>
         <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
         <td style="text-align:right">${(+t.miles||0)||'&mdash;'}</td>
@@ -4603,7 +4612,7 @@ async function saveInvoiceLine(invId){
   const { error } = await sb.from('invoice_lines').insert(row);
   if (error) { alert('Could not add: ' + error.message); return; }
   await recalcInvoice(invId);
-  closeOv('ov-gen'); await loadInvoiceData(); renderInvoices(); openInvoice(invId);
+  closeOv('ov-gen'); await loadInvoiceData(); refreshView(); openInvoice(invId);
 }
 
 async function deleteInvoiceLine(lineId, invId){
@@ -4692,7 +4701,7 @@ function renderSubPay(){
       <table class="tbl"><thead><tr><th>Date</th><th>Customer</th><th>Work</th>
         <th style="text-align:right">Hrs</th><th style="text-align:right">Rate</th><th style="text-align:right">Owed</th></tr></thead>
       <tbody>${entries.map(t => `<tr>
-        <td>${fmtDate(t.work_date)}</td><td>${esc(t.customer_name||'&mdash;')}</td>
+        <td>${fmtDate(t.work_date)}</td><td>${(esc(t.customer_name)||'&mdash;')}</td>
         <td>${esc(t.work_type_name||'')}${t.notes?`<div style="font-size:11px;color:var(--muted)">${esc(t.notes)}</div>`:''}</td>
         <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
         <td style="text-align:right">$${(+t.cost_rate||0).toFixed(2)}</td>
@@ -4982,7 +4991,7 @@ async function clockIn(){
     notes: $('tk-notes').value || null
   });
   if (error) { alert('Could not clock in: ' + error.message); return; }
-  await loadTimeData(); renderTime();
+  await loadTimeData(); refreshView();
 }
 
 async function addManualTime(){
@@ -5023,7 +5032,7 @@ async function addManualTime(){
     notes: $('mn-notes').value || null
   });
   if (error) { alert('Could not add: ' + error.message); return; }
-  await loadTimeData(); renderTime();
+  await loadTimeData(); refreshView();
 }
 
 // ============================================================================
@@ -5055,9 +5064,9 @@ function renderReceipts(){
 
   const rows = list.map(x => `<tr>
     <td>${x.expense_date||''}</td>
-    <td><b>${esc(x.vendor||'&mdash;')}</b>${x.description?`<div style="font-size:11.5px;color:var(--muted)">${esc(x.description)}</div>`:''}</td>
+    <td><b>${(esc(x.vendor)||'&mdash;')}</b>${x.description?`<div style="font-size:11.5px;color:var(--muted)">${esc(x.description)}</div>`:''}</td>
     <td>${esc(x.category||'')}${x.is_material?' <span class="badge b-blue">Material</span>':''}</td>
-    <td>${esc(x.customer_name||x.payee_name||'&mdash;')}</td>
+    <td>${(esc(x.customer_name||x.payee_name)||'&mdash;')}</td>
     <td style="text-align:right">$${(+x.amount||0).toFixed(2)}</td>
     <td style="text-align:center">
       ${x.receipt_photo_url?`<button class="btn btn-xs" onclick="expandPhoto('${esc(x.receipt_photo_url)}')">Photo</button>`:'<span class="badge b-amber">No photo</span>'}
@@ -5162,7 +5171,7 @@ async function createCustomInvoice(){
   }).select();
   if (error) { alert('Could not create: ' + error.message); return; }
   closeOv('ov-gen');
-  await loadInvoiceData(); renderInvoices(); openInvoice(data[0].id);
+  await loadInvoiceData(); refreshView(); openInvoice(data[0].id);
 }
 
 // ---------- printable document ----------
@@ -5471,7 +5480,7 @@ async function saveTimeEntry(){
   const { error } = await sb.from('time_entries').update(row).eq('id', id);
   if (error) { alert('Could not save: ' + error.message); return; }
   closeOv('ov-gen');
-  await loadTimeData(); renderTime();
+  await loadTimeData(); refreshView();
 }
 
 async function deleteTimeEntry(id){
@@ -5481,7 +5490,7 @@ async function deleteTimeEntry(id){
   const { error } = await sb.from('time_entries').delete().eq('id', id);
   if (error) { alert('Could not delete: ' + error.message); return; }
   closeOv('ov-gen');
-  await loadTimeData(); renderTime();
+  await loadTimeData(); refreshView();
 }
 
 // ---------- runaway protection on clock out ----------
@@ -5504,7 +5513,7 @@ async function clockOut(){
     miles, mileage_total: Math.round(miles * mrate * 100)/100
   }).eq('id', activeEntry.id);
   if (error) { alert('Could not clock out: ' + error.message); return; }
-  clearInterval(tickTimer); await loadTimeData(); renderTime();
+  clearInterval(tickTimer); await loadTimeData(); refreshView();
 }
 
 // warning banner on the clock card when a timer has run too long
@@ -5841,8 +5850,8 @@ function timeLogPanel(){
     <tbody>${list.map(t => `<tr>
       <td>${fmtDate(t.work_date)}<div style="font-size:11px;color:var(--muted)">${fmt12(t.clock_in)}${t.clock_out?' - '+fmt12(t.clock_out):''}</div></td>
       <td>${esc(t.crew_name||'')}</td>
-      <td>${esc(t.contractor_name||t.customer_name||'&mdash;')}</td>
-      <td>${esc(t.site_label||'&mdash;')}</td>
+      <td>${(esc(t.contractor_name||t.customer_name)||'&mdash;')}</td>
+      <td>${(esc(t.site_label)||'&mdash;')}${t.customer_name && t.customer_name!==t.contractor_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.customer_name)}</div>`:''}</td>
       <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
       <td style="text-align:right">${money((+t.bill_total||0)+(+t.mileage_total||0))}</td>
       <td style="text-align:center">${t.billed?'<span class="badge b-green">Invoiced</span>':'<span class="badge b-gray">Open</span>'}</td>
@@ -6102,7 +6111,9 @@ function renderHourLog(){
         <td style="text-align:center">${t.billed?'':`<input type="checkbox" style="width:auto" ${hlSel.has(t.id)?'checked':''} onchange="hlToggle('${t.id}')">`}</td>
         <td>${fmtDate(t.work_date)}<div style="font-size:11px;color:var(--muted)">${fmt12(t.clock_in)}${t.clock_out?' - '+fmt12(t.clock_out):''}</div></td>
         <td>${esc(t.crew_name||'')}</td>
-        <td>${esc(t.site_label||'&mdash;')}${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
+        <td>${(esc(t.site_label)||'&mdash;')}
+          ${t.customer_name && t.customer_name!==t.contractor_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.customer_name)}</div>`:''}
+          ${t.agency_name?`<div style="font-size:11px;color:var(--muted)">for ${esc(t.agency_name)}</div>`:''}</td>
         <td>${esc(t.work_type_name||'')}${t.tier_name?`<div style="font-size:11px;color:var(--muted)">${esc(t.tier_name)}</div>`:''}</td>
         <td style="text-align:right">${(+t.hours||0).toFixed(2)}</td>
         <td style="text-align:right">${money(t.bill_rate)}</td>
@@ -6440,7 +6451,7 @@ async function saveJobContact(){
 async function deleteJobContact(id){
   if (!confirm('Delete this log entry?')) return;
   await sb.from('job_contacts').delete().eq('id', id);
-  await loadHubData(); renderJob();
+  await loadHubData(); refreshView();
 }
 
 // ---------- subs on a job ----------
@@ -6488,13 +6499,13 @@ async function saveJobSub(){
   const { error } = id ? await sb.from('job_subs').update(row).eq('id',id)
                        : await sb.from('job_subs').insert(row);
   if (error) { alert('Could not save: ' + error.message); return; }
-  closeOv('ov-gen'); await loadHubData(); renderJob();
+  closeOv('ov-gen'); await loadHubData(); refreshView();
 }
 
 async function deleteJobSub(id){
   if (!confirm('Remove this sub from the job?')) return;
   await sb.from('job_subs').delete().eq('id', id);
-  closeOv('ov-gen'); await loadHubData(); renderJob();
+  closeOv('ov-gen'); await loadHubData(); refreshView();
 }
 
 // ---------- materials ----------
@@ -6530,13 +6541,13 @@ async function saveMaterial(){
   const { error } = id ? await sb.from('materials').update(row).eq('id',id)
                        : await sb.from('materials').insert(row);
   if (error) { alert('Could not save: ' + error.message); return; }
-  closeOv('ov-gen'); await loadHubData(); renderJob();
+  closeOv('ov-gen'); await loadHubData(); refreshView();
 }
 
 async function deleteMaterial(id){
   if (!confirm('Delete this material line?')) return;
   await sb.from('materials').delete().eq('id', id);
-  closeOv('ov-gen'); await loadHubData(); renderJob();
+  closeOv('ov-gen'); await loadHubData(); refreshView();
 }
 
 
@@ -6561,11 +6572,11 @@ function setInvGroup(m){ invGroupMode = m; renderInvoices(); }
 
 async function markSent(id){
   await sb.from('invoices').update({status:'sent'}).eq('id', id);
-  await loadInvoiceData(); renderInvoices();
+  await loadInvoiceData(); refreshView();
 }
 async function markDraft(id){
   await sb.from('invoices').update({status:'draft'}).eq('id', id);
-  await loadInvoiceData(); renderInvoices();
+  await loadInvoiceData(); refreshView();
 }
 
 function renderInvoices(){
@@ -6637,7 +6648,7 @@ function renderInvoices(){
     const dates = [...new Set(lines.map(l=>l.work_date).filter(Boolean))].sort();
     const span = dates.length ? (dates.length===1 ? fmtDate(dates[0]) : fmtDate(dates[0]) + ' - ' + fmtDate(dates[dates.length-1])) : (inv.period_label||'');
     return `<tr>
-      <td><b>${esc(inv.invoice_no||'&mdash;')}</b>${inv.job_title?`<div style="font-size:11px;color:var(--muted)">${esc(inv.job_title)}</div>`:''}</td>
+      <td><b>${(esc(inv.invoice_no)||'&mdash;')}</b>${inv.job_title?`<div style="font-size:11px;color:var(--muted)">${esc(inv.job_title)}</div>`:''}</td>
       <td>${esc(inv.customer_name||'')}</td>
       <td>${fmtDate(inv.issue_date)}${span?`<div style="font-size:11px;color:var(--muted)">work: ${esc(span)}</div>`:''}</td>
       <td style="text-align:right">${money(inv.total)}</td>
@@ -6712,9 +6723,10 @@ function groupKeyFor(t){
   const site = t.site_label || '';
   const wt = t.work_type_name || 'Labor';
   const rate = +t.bill_rate || 0;
-  if (invGroupMode === 'job')     return {key: wt+'|'+rate+'|'+site, label: wt, site, date: null};
-  if (invGroupMode === 'day')     return {key: wt+'|'+rate+'|'+t.work_date, label: wt, site: '', date: t.work_date};
-  return {key: wt+'|'+rate+'|'+site+'|'+t.work_date, label: wt, site, date: t.work_date};
+  const cn = t.customer_name || '';
+  if (invGroupMode === 'job')     return {key: wt+'|'+rate+'|'+site+'|'+cn, label: wt, site, date: null};
+  if (invGroupMode === 'day')     return {key: wt+'|'+rate+'|'+t.work_date+'|'+cn, label: wt, site: '', date: t.work_date};
+  return {key: wt+'|'+rate+'|'+site+'|'+cn+'|'+t.work_date, label: wt, site, date: t.work_date};
 }
 
 async function buildInvoiceFromIds(payerId, ids, periodLabel){
@@ -6734,7 +6746,7 @@ async function buildInvoiceFromIds(payerId, ids, periodLabel){
     if (t.agency_name) agencies.add(t.agency_name);
     if (t.work_date) allDates.add(t.work_date);
     groups[gk.key] = groups[gk.key] || {label: gk.label, site: gk.site, date: gk.date,
-      rate: +t.bill_rate||0, qty:0, amount:0, dates:new Set()};
+      customer: t.customer_name || '', rate: +t.bill_rate||0, qty:0, amount:0, dates:new Set()};
     groups[gk.key].qty += +t.hours||0;
     groups[gk.key].amount += +t.bill_total||0;
     if (t.work_date) groups[gk.key].dates.add(t.work_date);
@@ -6765,7 +6777,10 @@ async function buildInvoiceFromIds(payerId, ids, periodLabel){
   for (const g of ordered) {
     const ds = [...g.dates].sort();
     const dlabel = ds.length ? (ds.length===1 ? fmtDate(ds[0]) : fmtDate(ds[0])+' - '+fmtDate(ds[ds.length-1])) : '';
-    const desc = [g.label, g.site].filter(Boolean).join(' - ') + (g.date ? '  (' + fmtDate(g.date) + ')' : '');
+    const cust = g.customer && g.customer !== (payer||{}).name ? g.customer : '';
+    const desc = [g.label, g.site || cust].filter(Boolean).join(' - ')
+      + (g.site && cust && g.site !== cust ? ' (' + cust + ')' : '')
+      + (g.date ? '  ' + fmtDate(g.date) : '');
     await sb.from('invoice_lines').insert({
       invoice_id: inv.id, description: desc,
       site_label: g.site || null,
@@ -7109,7 +7124,7 @@ function renderMaterialsAll(){
       <td><b>${esc(m.name)}</b>${m.notes?`<div style="font-size:11.5px;color:var(--muted)">${esc(m.notes)}</div>`:''}</td>
       <td>${job?`<a href="#" onclick="openJob('${job.id}');return false">${esc(job.title||'Job')}</a>`:'&mdash;'}</td>
       <td style="text-align:right">${(+m.qty||1)} ${esc(m.unit||'')}</td>
-      <td>${esc(m.vendor||'&mdash;')}</td>
+      <td>${(esc(m.vendor)||'&mdash;')}</td>
       <td>${m.expected_date?fmtDate(m.expected_date):'&mdash;'}</td>
       <td style="text-align:right">${m.est_cost?money(m.est_cost):'&mdash;'}</td>
       <td style="text-align:center"><span class="badge ${st.cls}">${st.label}</span></td>
@@ -7143,7 +7158,7 @@ function renderMaterialsAll(){
 
 async function markMatIn(id){
   await sb.from('materials').update({status:'received', received_date: ymd(new Date()), updated_at: new Date().toISOString()}).eq('id', id);
-  await loadHubData(); renderMaterialsAll();
+  await loadHubData(); refreshView();
 }
 
 
@@ -7383,7 +7398,7 @@ async function uploadJobFile(input, jobId, custId, kind){
       customer_id: custId || null, job_id: jobId, file_path: path, file_name: f.name,
       file_kind: kind || 'document', uploaded_by: CU ? CU.email : null
     });
-    await loadHubData(); renderJob();
+    await loadHubData(); refreshView();
   } catch(e){ alert('Upload failed: ' + e.message); }
   input.value = '';
 }
@@ -7400,7 +7415,12 @@ async function quickJobNote(jobId){
   });
   if (error) { alert('Could not save: ' + error.message); return; }
   $('job-quicknote').value = '';
-  await loadHubData(); renderJob();
+  await loadHubData(); refreshView();
+}
+
+// re-render the page currently on screen, whatever it is
+function refreshView(){
+  try { go(cur); } catch(e){ pamShowError('refresh: ' + e.message); }
 }
 </script>
 
